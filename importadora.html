@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dom Gabriel · Importadora</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--navy:#1F3A5F;--gold:#C9A227;--bg:#F5F6F8;--card:#fff;--txt:#1d2733;--mut:#6b7684;--ok:#2e7d32;--warn:#b26a00;--err:#c62828;--bd:#e2e6ea}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--txt)}
+header{background:var(--navy);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0}header small{color:#cfd8e3}
+main{max-width:980px;margin:0 auto;padding:20px 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:16px;color:var(--navy)}
+label{display:block;font-size:13px;margin:8px 0 4px;color:var(--mut)}
+input,select{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;font-size:14px}
+button{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer}
+button.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}button.gold{background:var(--gold);color:#1d2733}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.drop{border:2px dashed #aab4c0;border-radius:10px;padding:30px;text-align:center;color:var(--mut);cursor:pointer}
+.drop.on{border-color:var(--gold);background:#fffaf0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{border:1px solid var(--bd);border-radius:8px;padding:12px}.kpi b{display:block;font-size:22px;color:var(--navy)}.kpi span{font-size:12px;color:var(--mut)}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;font-size:14px}
+.ok{background:#e8f5e9;color:var(--ok)}.warn{background:#fff4e0;color:var(--warn)}.err{background:#fdecea;color:var(--err)}.info{background:#eef3f9;color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd)}th{color:var(--mut);font-weight:normal}
+.bar{height:8px;background:#e6e9ee;border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--gold);width:0}
+.hide{display:none}.mut{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<header><div><h1>Dom Gabriel · Importadora</h1><small>Atualiza o banco com os relatórios exportados do Santri</small></div>
+<div id="who" class="row"></div></header>
+<main>
+<div id="erroGeral" class="msg err hide"></div>
+
+<section id="login" class="card">
+  <h2>Entrar</h2>
+  <label>E-mail</label><input id="email" type="email" autocomplete="username">
+  <label>Senha</label><input id="senha" type="password" autocomplete="current-password">
+  <div id="nomeBox" class="hide"><label>Seu nome</label><input id="nome"></div>
+  <div class="row" style="margin-top:12px">
+    <button id="btnEntrar">Entrar</button>
+    <button class="sec" id="btnCriar">Criar meu acesso</button>
+  </div>
+  <div id="loginMsg"></div>
+</section>
+
+<section id="app" class="hide">
+  <div class="card">
+    <h2>1. Escolha o relatório</h2>
+    <label>Tipo de arquivo</label>
+    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option></select>
+    <p class="mut">Próximos tipos: Vendas, Compras, Entradas, Contas a pagar/receber.</p>
+    <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
+    <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
+  </div>
+
+  <div id="passoColunas" class="card hide">
+    <h2>2. Conferência das colunas</h2>
+    <div id="colMsgs"></div>
+    <div id="mapear"></div>
+  </div>
+
+  <div id="passoEnvio" class="card hide">
+    <h2>3. Preparando a prévia</h2>
+    <div class="bar"><i id="barra"></i></div><p id="envioTxt" class="mut"></p>
+  </div>
+
+  <div id="passoPrevia" class="card hide">
+    <h2>4. Prévia — nada foi gravado ainda</h2>
+    <div class="grid" id="kpis"></div>
+    <div id="previaMsgs"></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;color:var(--txt)"><input type="checkbox" id="inativar" style="width:auto"> Marcar como inativos os produtos que não vieram no arquivo</label>
+    <div class="row" style="margin-top:12px">
+      <button class="gold" id="btnAplicar">Confirmar e gravar</button>
+      <button class="sec" id="btnCancelar">Cancelar</button>
+      <button class="sec" id="btnPendencias">Baixar lista de produtos m² sem peso/m²</button>
+    </div>
+  </div>
+
+  <div id="resultado" class="card hide"></div>
+
+  <div class="card">
+    <h2>Histórico de importações</h2>
+    <div id="hist" class="mut">Carregando…</div>
+  </div>
+</section>
+</main>
+
+<script>
+window.addEventListener('error',e=>{const d=document.getElementById('erroGeral');if(d){d.classList.remove('hide');d.textContent='Erro: '+e.message}});
+window.addEventListener('unhandledrejection',e=>{const d=document.getElementById('erroGeral');if(d){d.classList.remove('hide');d.textContent='Erro: '+(e.reason&&e.reason.message||e.reason)}});
+const SB_URL='https://vmpxssoyqfdnnyhnvkyl.supabase.co';
+const SB_KEY='sb_publishable_NXQa66tcvLT7k_uib2UAeg_E0as2h7M';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const $=id=>document.getElementById(id);
+const msg=(el,t,c='info')=>{$(el).innerHTML+=`<div class="msg ${c}">${t}</div>`};
+let usuario=null, linhas=[], cabec=[], mapa={}, apelidos=[], importacaoId=null, pendencias=[];
+
+// ---------- Login ----------
+let modoCriar=false;
+$('btnCriar').onclick=async()=>{
+  if(!modoCriar){modoCriar=true;$('nomeBox').classList.remove('hide');$('btnCriar').textContent='Enviar cadastro';return;}
+  $('loginMsg').innerHTML='';
+  const {error}=await sb.auth.signUp({email:$('email').value.trim(),password:$('senha').value,options:{data:{nome:$('nome').value.trim()}}});
+  if(error) return msg('loginMsg',error.message,'err');
+  msg('loginMsg','Cadastro enviado. Confirme pelo link que chegou no seu e-mail e peça à direção para liberar seu acesso.','ok');
+};
+$('btnEntrar').onclick=async()=>{
+  $('loginMsg').innerHTML='';
+  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('senha').value});
+  if(error) return msg('loginMsg','Não foi possível entrar: '+error.message,'err');
+  iniciar();
+};
+async function iniciar(){
+  const {data:{user}}=await sb.auth.getUser(); if(!user) return;
+  const {data}=await sb.from('usuarios').select('id,nome,papel,ativo,loja_id').eq('id',user.id).maybeSingle();
+  if(!data||!data.ativo){ $('loginMsg').innerHTML=''; msg('loginMsg','Seu acesso ainda não foi liberado pela direção.','warn'); await sb.auth.signOut(); return; }
+  if(!['admin','direcao'].includes(data.papel)){ msg('loginMsg','A Importadora é restrita à direção.','warn'); await sb.auth.signOut(); return; }
+  usuario=data; $('login').classList.add('hide'); $('app').classList.remove('hide');
+  $('who').innerHTML=`<span>${data.nome}</span><button class="sec" id="sair" style="padding:6px 10px">Sair</button>`;
+  $('sair').onclick=async()=>{await sb.auth.signOut();location.reload();};
+  historico();
+}
+sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
+
+const PARSER_SRC = "// Streaming ODS parser (shared by worker and node test)\nfunction criarParserODS(onRow){\n  let buf='';\n  const ent=s=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&apos;/g,\"'\").replace(/&amp;/g,'&');\n  const cellRe=/<table:(?:covered-)?table-cell\\b([^>]*?)(\\/>|>([\\s\\S]*?)<\\/table:(?:covered-)?table-cell>)/g;\n  function textoCelula(inner){\n    if(!inner) return '';\n    const ps=[]; const pRe=/<text:p\\b[^>]*?(?:\\/>|>([\\s\\S]*?)<\\/text:p>)/g; let m;\n    while((m=pRe.exec(inner))){ let t=m[1]||''; t=t.replace(/<text:s\\b[^>]*?text:c=\"(\\d+)\"[^>]*\\/>/g,(_,n)=>' '.repeat(+n)).replace(/<text:s\\b[^>]*\\/>/g,' ').replace(/<text:tab\\b[^>]*\\/>/g,'\\t').replace(/<[^>]+>/g,''); ps.push(ent(t)); }\n    return ps.join('\\n');\n  }\n  function linha(xml){\n    const cells=[]; let m; cellRe.lastIndex=0;\n    while((m=cellRe.exec(xml))){\n      const attrs=m[1]; let v=textoCelula(m[3]);\n      if(!v){ const ov=attrs.match(/office:value=\"([^\"]*)\"/); if(ov) v=ov[1]; }\n      const rep=attrs.match(/table:number-columns-repeated=\"(\\d+)\"/); let n=rep?+rep[1]:1;\n      if(!v && n>60) n=1; // colunas vazias repetidas no fim\n      for(let i=0;i<n;i++) cells.push(v);\n    }\n    while(cells.length && cells[cells.length-1]==='') cells.pop();\n    return cells;\n  }\n  return {\n    push(txt){\n      buf+=txt; let end;\n      while((end=buf.indexOf('</table:table-row>'))!==-1){\n        const start=buf.lastIndexOf('<table:table-row',end);\n        const row=buf.slice(start,end); buf=buf.slice(end+18);\n        const c=linha(row); if(c.length) onRow(c);\n      }\n      // remove lixo antes da pr\u00f3xima linha para n\u00e3o acumular\n      const nx=buf.indexOf('<table:table-row'); if(nx>0) buf=buf.slice(nx); else if(nx===-1 && buf.length>1e6) buf=buf.slice(-1e5);\n    }\n  };\n}\n\n";
+
+// ---------- Leitor rápido de .ods (em segundo plano, por partes) ----------
+const WORKER_SRC = `
+importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+__PARSER__
+onmessage = async (ev) => {
+  try{
+    const file = ev.data; const rows=[]; const dec=new TextDecoder(); let lido=0, achou=false;
+    const p = criarParserODS(r=>rows.push(r));
+    let fim; const pronto = new Promise(r=>fim=r);
+    const uz = new fflate.Unzip(f=>{ if(f.name!=='content.xml') return; achou=true;
+      f.ondata=(e,d,final)=>{ if(e){postMessage({erro:String(e)});return;} p.push(dec.decode(d,{stream:!final})); if(final) fim(); };
+      f.start(); });
+    uz.register(fflate.UnzipInflate);
+    const reader = file.stream().getReader();
+    while(true){ const {done,value}=await reader.read(); if(done){ uz.push(new Uint8Array(0),true); break; }
+      lido+=value.length; uz.push(value,false); postMessage({progresso: Math.round(lido/file.size*100)}); }
+    if(!achou) throw new Error('Arquivo .ods sem conteúdo de planilha');
+    await pronto; postMessage({linhas: rows});
+  }catch(e){ postMessage({erro: e.message||String(e)}); }
+};`.replace('__PARSER__', ()=>PARSER_SRC);
+
+function lerODS(file, onProgresso){
+  return new Promise((ok,falha)=>{
+    const w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:'text/javascript'})));
+    w.onmessage = ev => { const d=ev.data; if(d.progresso!==undefined) onProgresso(d.progresso); else if(d.erro){ w.terminate(); falha(new Error(d.erro)); } else if(d.linhas){ w.terminate(); ok(d.linhas); } };
+    w.onerror = e => { w.terminate(); falha(new Error(e.message||'Falha ao ler o arquivo')); };
+    w.postMessage(file);
+  });
+}
+
+// ---------- Arquivo ----------
+const drop=$('drop');
+drop.onclick=()=>$('file').click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('on')};
+drop.ondragleave=()=>drop.classList.remove('on');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('on');if(e.dataTransfer.files[0])lerArquivo(e.dataTransfer.files[0])};
+$('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
+let arquivoNome='';
+
+async function lerArquivo(f){
+  resetPassos(); arquivoNome=f.name;
+  drop.innerHTML=`Lendo <b>${f.name}</b>…`;
+  let rows;
+  try{
+    if(/\.ods$/i.test(f.name)){
+      rows = await lerODS(f, p=>{ drop.innerHTML=`Lendo <b>${f.name}</b>… ${p}%<br><small>arquivos grandes do Santri levam alguns segundos</small>`; });
+    } else {
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array',raw:true,cellDates:false});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+    }
+  }catch(e){ drop.innerHTML='Arraste o arquivo novamente'; $('passoColunas').classList.remove('hide'); return msg('colMsgs','Não consegui ler o arquivo: '+e.message,'err'); }
+  const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value);
+  apelidos=ap||[];
+  const nomesConhecidos=new Set(apelidos.map(a=>norm(a.apelido)));
+  // acha a linha de cabeçalho: a que tem mais nomes conhecidos
+  let hi=-1,best=0;
+  rows.slice(0,40).forEach((r,i)=>{const n=r.filter(c=>nomesConhecidos.has(norm(c))).length;if(n>best){best=n;hi=i}});
+  if(hi<0){drop.innerHTML='Arraste outro arquivo';$('passoColunas').classList.remove('hide');return msg('colMsgs','Não encontrei o cabeçalho do relatório neste arquivo. É o relatório certo?','err');}
+  cabec=rows[hi].map(c=>String(c).trim());
+  linhas=rows.slice(hi+1).filter(r=>/^\d/.test(String(r[0]).trim()));
+  drop.innerHTML=`<b>${f.name}</b> — ${linhas.length.toLocaleString('pt-BR')} linhas lidas. Clique para trocar.`;
+  conferirColunas();
+}
+const norm=s=>String(s||'').trim().toLowerCase();
+
+function conferirColunas(){
+  $('passoColunas').classList.remove('hide'); $('colMsgs').innerHTML=''; $('mapear').innerHTML='';
+  mapa={};
+  const idx={}; cabec.forEach((c,i)=>{if(c)idx[norm(c)]=i});
+  const campos=[...new Set(apelidos.map(a=>a.campo))];
+  const faltando=[];
+  campos.forEach(campo=>{
+    const al=apelidos.filter(a=>a.campo===campo);
+    const hit=al.find(a=>idx[norm(a.apelido)]!==undefined);
+    if(hit) mapa[campo]=idx[norm(hit.apelido)];
+    else if(al.some(a=>a.obrigatorio)) faltando.push(campo);
+  });
+  const conhecidas=new Set(apelidos.map(a=>norm(a.apelido)));
+  const novas=cabec.filter(c=>c&&!conhecidas.has(norm(c)));
+  msg('colMsgs',`${Object.keys(mapa).length} campos reconhecidos pelo nome da coluna.`,'ok');
+  if(novas.length) msg('colMsgs',`Colunas no arquivo que o sistema não usa (ignoradas, sem problema): ${novas.join(', ')}.`,'info');
+  if(faltando.length){
+    msg('colMsgs',`<b>Importação bloqueada:</b> não encontrei coluna para ${faltando.join(', ')}. Se o Santri mudou o nome, indique abaixo qual coluna é — o sistema guarda esse apelido para as próximas vezes.`,'err');
+    faltando.forEach(campo=>{
+      $('mapear').innerHTML+=`<label>Qual coluna é <b>${campo}</b>?</label><select data-campo="${campo}"><option value="">—</option>${cabec.map((c,i)=>c?`<option value="${i}">${c}</option>`:'').join('')}</select>`;
+    });
+    $('mapear').innerHTML+=`<div class="row" style="margin-top:10px"><button id="btnMapear">Salvar apelidos e continuar</button></div>`;
+    $('btnMapear').onclick=async()=>{
+      const sels=[...document.querySelectorAll('#mapear select')];
+      if(sels.some(s=>!s.value)) return alert('Indique todas as colunas.');
+      for(const s of sels){ await sb.from('importacao_colunas').insert({tipo:$('tipo').value,campo:s.dataset.campo,apelido:cabec[+s.value],obrigatorio:true}); }
+      const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value); apelidos=ap; conferirColunas();
+    };
+    return;
+  }
+  enviarStaging();
+}
+
+// ---------- Conversões ----------
+const numBR=v=>{v=String(v??'').trim();if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
+const dataBR=v=>{const m=String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
+const txt=v=>{v=String(v??'').trim();return v||null};
+
+function montarRegistro(r){
+  const g=c=>mapa[c]!==undefined?r[mapa[c]]:'';
+  const id=numBR(String(g('id')).replace(/\./g,''));
+  return {id, nome:txt(g('nome')), marca:txt(g('marca')), unidade:txt(g('unidade')),
+    m2_caixa:numBR(g('m2_caixa')), peso_caixa_kg:numBR(g('peso_caixa_kg')), peso_unidade_kg:numBR(g('peso_unidade_kg')),
+    codigo_original:txt(g('codigo_original')), fabricante:txt(g('fabricante')), ncm:txt(g('ncm')),
+    ativo: mapa.ativo===undefined?true: norm(g('ativo'))!=='não'&&norm(g('ativo'))!=='nao',
+    preco_venda:numBR(g('preco_venda')), tipo_controle_estoque:txt(g('tipo_controle_estoque')),
+    data_cadastro_santri:dataBR(g('data_cadastro_santri')), codigo_barras:txt(g('codigo_barras'))};
+}
+
+// ---------- Envio para a área de espera ----------
+async function enviarStaging(){
+  $('passoEnvio').classList.remove('hide');
+  const regs=[]; const vistos=new Set(); let invalidos=0;
+  for(const r of linhas){const x=montarRegistro(r); if(!x.id||!x.nome){invalidos++;continue} if(vistos.has(x.id))continue; vistos.add(x.id); regs.push(x);}
+  pendencias=regs.filter(x=>x.unidade==='M2'&&(!x.peso_caixa_kg||!x.m2_caixa));
+  const {data:imp,error}=await sb.from('importacoes').insert({tipo:$('tipo').value,arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
+  if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
+  importacaoId=imp.id;
+  const lote=1000;
+  for(let i=0;i<regs.length;i+=lote){
+    const pedaço=regs.slice(i,i+lote).map(x=>({...x,importacao_id:importacaoId}));
+    const {error:e}=await sb.from('produtos_staging').insert(pedaço);
+    if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
+    const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
+  }
+  if(invalidos) $('envioTxt').textContent+=` · ${invalidos} linhas sem código/nome ignoradas`;
+  previa();
+}
+
+async function previa(){
+  const {data,error}=await sb.rpc('previa_importacao_produtos',{p_importacao:importacaoId});
+  if(error) return msg('previaMsgs','Erro na prévia: '+error.message,'err');
+  $('passoPrevia').classList.remove('hide');
+  const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
+  $('kpis').innerHTML=k(data.no_arquivo,'produtos no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.ausentes_no_arquivo,'ativos no banco que não vieram')+k(data.m2_sem_peso_caixa,'m² sem peso da caixa')+k(data.m2_sem_m2_caixa,'m² sem m²/caixa');
+  $('previaMsgs').innerHTML='';
+  if(data.ativos_hoje>0 && data.no_arquivo < data.ativos_hoje*0.9) msg('previaMsgs',`Atenção: o arquivo tem ${data.no_arquivo} produtos e o banco tem ${data.ativos_hoje} ativos (mais de 10% de diferença). Confira se o filtro do relatório está certo antes de gravar.`,'warn');
+  if(data.m2_sem_peso_caixa>0) msg('previaMsgs',`${data.m2_sem_peso_caixa} produtos vendidos em m² estão sem peso da caixa no Santri — o frete por produto não fecha para eles. Baixe a lista para Compras completar.`,'warn');
+}
+$('btnPendencias').onclick=()=>{
+  const csv=['Código;Código original;Nome;Marca;m² por caixa;Peso da caixa'].concat(pendencias.map(x=>[x.id,x.codigo_original,x.nome,x.marca,x.m2_caixa??'',x.peso_caixa_kg??''].join(';'))).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='produtos_m2_sem_peso.csv';a.click();
+};
+$('btnAplicar').onclick=async()=>{
+  $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
+  const {data,error}=await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
+  $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
+  $('resultado').classList.remove('hide');
+  if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
+  $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}. Registro nº ${importacaoId}.</div>`;
+  $('passoPrevia').classList.add('hide'); historico();
+};
+$('btnCancelar').onclick=()=>cancelar(true);
+async function cancelar(avisar){
+  if(importacaoId){ await sb.from('produtos_staging').delete().eq('importacao_id',importacaoId); await sb.from('importacoes').update({status:'cancelada'}).eq('id',importacaoId); }
+  resetPassos(); if(avisar){$('resultado').classList.remove('hide');$('resultado').innerHTML='<div class="msg info">Importação cancelada. Nada foi gravado.</div>'} historico();
+}
+function resetPassos(){['passoColunas','passoEnvio','passoPrevia','resultado'].forEach(i=>$(i).classList.add('hide'));$('colMsgs').innerHTML='';$('previaMsgs').innerHTML='';$('barra').style.width='0';importacaoId=null;}
+
+async function historico(){
+  const {data}=await sb.from('importacoes').select('id,tipo,arquivo_nome,linhas,status,criado_em,resumo').order('id',{ascending:false}).limit(15);
+  if(!data||!data.length){$('hist').textContent='Nenhuma importação ainda.';return;}
+  $('hist').innerHTML=`<table><tr><th>Nº</th><th>Quando</th><th>Tipo</th><th>Arquivo</th><th>Linhas</th><th>Status</th><th>Resultado</th></tr>${data.map(d=>`<tr><td>${d.id}</td><td>${new Date(d.criado_em).toLocaleString('pt-BR')}</td><td>${d.tipo}</td><td>${d.arquivo_nome||''}</td><td>${(d.linhas||0).toLocaleString('pt-BR')}</td><td>${d.status}</td><td>${d.resumo?`${d.resumo.novos} novos · ${d.resumo.alterados} alterados`:''}</td></tr>`).join('')}</table>`;
+}
+</script>
+</body>
+</html>

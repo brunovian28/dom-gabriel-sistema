@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3A5F">
+<title>Dom Gabriel · Sistema</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--navy:#1F3A5F;--navy2:#2c4f7c;--gold:#C9A227;--bg:#F4F5F7;--card:#fff;--txt:#1d2733;--mut:#6b7684;--bd:#e2e6ea;
+--quente:#c62828;--morna:#e08e0b;--fria:#1e6fb8;--ok:#2e7d32}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--txt);font-size:15px}
+button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:9px 14px;background:var(--navy);color:#fff}
+button.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}button.link{background:none;color:var(--navy);padding:4px 6px}
+button.gold{background:var(--gold);color:#1d2733}button.del{background:none;color:#b00;padding:4px 8px}
+input,select,textarea{font:inherit;width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:#fff;color:var(--txt)}
+input:disabled,select:disabled,textarea:disabled{background:#f2f3f5;color:#555}
+textarea{min-height:60px;resize:vertical}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+.hide{display:none!important}.mut{color:var(--mut);font-size:13px}
+/* layout */
+#topo{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
+#topo b{font-size:16px}#topo small{color:#cfd8e3}
+#corpo{display:flex;min-height:calc(100% - 52px)}
+#menu{width:220px;background:#fff;border-right:1px solid var(--bd);padding:12px 8px;flex-shrink:0}
+#menu a{display:block;padding:10px 12px;border-radius:8px;color:var(--txt);text-decoration:none;margin-bottom:2px}
+#menu a.on{background:#eef3f9;color:var(--navy);font-weight:bold}
+#conteudo{flex:1;padding:16px;max-width:1200px;margin:0 auto;width:100%;padding-bottom:90px}
+#menuMob{display:none}
+@media (max-width:800px){#menu{display:none}#menuMob{display:flex;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--bd);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
+#menuMob a{flex:1;text-align:center;padding:10px 4px;font-size:12px;color:var(--mut);text-decoration:none}#menuMob a.on{color:var(--navy);font-weight:bold}#conteudo{padding:12px}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:15px;color:var(--navy)}
+.linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
+@media (max-width:800px){.g2,.g3{grid-template-columns:1fr}}
+.pill{display:inline-block;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:bold;color:#fff}
+.Quente{background:var(--quente)}.Morna{background:var(--morna)}.Fria{background:var(--fria)}
+.lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.capaCard{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:12px;cursor:pointer}
+.capaCard:hover{border-color:var(--navy2)}
+.capaCard .t{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.atras{color:var(--quente);font-weight:bold}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--bd);margin:8px 0 12px;scrollbar-width:none}
+.tabs a{padding:9px 12px;white-space:nowrap;color:var(--mut);text-decoration:none;border-bottom:3px solid transparent}
+.tabs a.on{color:var(--navy);border-color:var(--gold);font-weight:bold}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}th{color:var(--mut);font-weight:normal;font-size:12px}
+.tbl{overflow-x:auto}
+.item{border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:8px;background:#fff}
+.sug{border:1px solid var(--bd);border-radius:8px;max-height:260px;overflow:auto;background:#fff}
+.sug div{padding:8px 10px;border-bottom:1px solid var(--bd);cursor:pointer}.sug div:hover{background:#f5f7fa}
+.kpis{display:flex;gap:10px;flex-wrap:wrap}.kpi{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:8px 12px}.kpi b{display:block;font-size:17px;color:var(--navy)}.kpi span{font-size:12px;color:var(--mut)}
+#toast{position:fixed;right:16px;bottom:80px;background:#1d2733;color:#fff;padding:9px 14px;border-radius:8px;opacity:0;transition:.2s;z-index:50;font-size:14px}
+#toast.on{opacity:.93}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:flex-start;justify-content:center;z-index:40;padding:40px 12px;overflow:auto}
+.modal .card{max-width:520px;width:100%}
+.chk{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)}.chk input[type=checkbox]{width:22px;height:22px;flex-shrink:0}
+.chk .txt{flex:1}.chk input[type=date]{width:150px}
+#login{max-width:380px;margin:60px auto}
+.aviso{background:#fff4e0;color:#8a5200;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
+.erro{background:#fdecea;color:#b00;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
+</style>
+</head>
+<body>
+<div id="topo"><div><b>Dom Gabriel</b> <small>· Sistema interno</small></div><div id="quem" class="mut" style="color:#cfd8e3"></div></div>
+
+<div id="login" class="card">
+  <h3>Entrar</h3>
+  <label>E-mail</label><input id="lEmail" type="email" autocomplete="username">
+  <label>Senha</label><input id="lSenha" type="password" autocomplete="current-password">
+  <div id="lNomeBox" class="hide"><label>Seu nome completo</label><input id="lNome"></div>
+  <div class="linha" style="margin-top:12px"><button id="bEntrar">Entrar</button><button class="sec" id="bCriar">Criar meu acesso</button></div>
+  <div id="lMsg"></div>
+</div>
+
+<div id="corpo" class="hide">
+  <nav id="menu"></nav>
+  <main id="conteudo"></main>
+</div>
+<nav id="menuMob" class="hide"></nav>
+<div id="toast"></div>
+<div id="modal"></div>
+
+<script>
+const sb = supabase.createClient('https://vmpxssoyqfdnnyhnvkyl.supabase.co','sb_publishable_NXQa66tcvLT7k_uib2UAeg_E0as2h7M');
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const brl = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const dBR = d => d ? new Date(d + (d.length===10?'T12:00:00':'')).toLocaleDateString('pt-BR') : '';
+const hoje = () => new Date().toISOString().slice(0,10);
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1600);}
+function erro(e){ console.error(e); toast('Erro: '+(e.message||e)); }
+window.addEventListener('unhandledrejection',e=>erro(e.reason||e));
+
+let EU=null, LOJAS=[], OP={}, CAPA=null;
+const ehDirecao = () => ['admin','direcao'].includes(EU?.papel);
+
+// ================= LOGIN =================
+let modoCriar=false;
+$('#bCriar').onclick=async()=>{
+  if(!modoCriar){modoCriar=true;$('#lNomeBox').classList.remove('hide');$('#bCriar').textContent='Enviar cadastro';return;}
+  const {error}=await sb.auth.signUp({email:$('#lEmail').value.trim(),password:$('#lSenha').value,options:{data:{nome:$('#lNome').value.trim()}}});
+  $('#lMsg').innerHTML = error ? `<div class="erro">${esc(error.message)}</div>` : `<div class="aviso">Cadastro enviado. Confirme pelo e-mail e aguarde a direção liberar seu acesso.</div>`;
+};
+$('#bEntrar').onclick=async()=>{
+  const {error}=await sb.auth.signInWithPassword({email:$('#lEmail').value.trim(),password:$('#lSenha').value});
+  if(error) return $('#lMsg').innerHTML=`<div class="erro">Não foi possível entrar: ${esc(error.message)}</div>`;
+  iniciar();
+};
+$('#lSenha').addEventListener('keydown',e=>{if(e.key==='Enter')$('#bEntrar').click()});
+
+async function iniciar(){
+  const {data:{user}}=await sb.auth.getUser(); if(!user) return;
+  const {data:eu}=await sb.from('usuarios').select('*').eq('id',user.id).maybeSingle();
+  if(!eu||!eu.ativo){ $('#lMsg').innerHTML='<div class="aviso">Seu acesso ainda não foi liberado pela direção.</div>'; await sb.auth.signOut(); return; }
+  EU=eu;
+  const [{data:lj},{data:op}]=await Promise.all([sb.from('lojas').select('*').order('id'), sb.from('listas_opcoes').select('lista,valor,ordem').eq('ativo',true).order('ordem')]);
+  LOJAS=lj||[]; OP={}; (op||[]).forEach(o=>(OP[o.lista]=OP[o.lista]||[]).push(o.valor));
+  $('#login').classList.add('hide'); $('#corpo').classList.remove('hide'); $('#menuMob').classList.remove('hide');
+  $('#quem').innerHTML=`${esc(eu.nome)} · ${esc(eu.papel)} <button class="link" style="color:#fff" id="sair">Sair</button>`;
+  $('#sair').onclick=async()=>{await sb.auth.signOut();location.hash='';location.reload();};
+  montarMenu(); rota();
+}
+sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
+
+// ================= NAVEGAÇÃO =================
+function montarMenu(){
+  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários']);
+  $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
+  $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
+}
+window.addEventListener('hashchange',rota);
+function rota(){
+  if(!EU) return; const h=location.hash||'#/capas';
+  document.querySelectorAll('#menu a,#menuMob a').forEach(a=>a.classList.toggle('on',h.startsWith(a.getAttribute('href'))));
+  if(h.startsWith('#/capa/')) return abrirCapa(h.split('/')[2]);
+  if(h==='#/nova') return novaCapa();
+  if(h==='#/usuarios') return telaUsuarios();
+  telaLista();
+}
+const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+
+// ================= LISTA DE CAPAS =================
+let filtro={escopo:'minhas',status:'abertas',busca:''};
+async function telaLista(){
+  $('#conteudo').innerHTML=`
+  <div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Capas de atendimento</h2><button class="gold" onclick="location.hash='#/nova'">+ Nova capa</button></div>
+  <div class="card"><div class="g3">
+    <div><label>Buscar (nome, WhatsApp, endereço, nº)</label><input id="fBusca" value="${esc(filtro.busca)}" placeholder="ex.: Juliana, 66999…, Rua…"></div>
+    <div><label>Mostrar</label><select id="fEscopo"><option value="minhas">Minhas capas</option><option value="loja">Todas da loja</option>${ehDirecao()?'<option value="todas">Todas as lojas</option>':''}</select></div>
+    <div><label>Status</label><select id="fStatus"><option value="abertas">Em andamento</option><option value="todas">Todos</option>${(OP.status_capa||[]).map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+  </div></div>
+  <div id="kpis" class="kpis" style="margin-bottom:12px"></div>
+  <div id="res" class="lista"><p class="mut">Carregando…</p></div>`;
+  $('#fEscopo').value=filtro.escopo; $('#fStatus').value=filtro.status;
+  let t; $('#fBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{filtro.busca=e.target.value;carregarLista()},300)};
+  $('#fEscopo').onchange=e=>{filtro.escopo=e.target.value;carregarLista()};
+  $('#fStatus').onchange=e=>{filtro.status=e.target.value;carregarLista()};
+  carregarLista();
+}
+async function carregarLista(){
+  let q=sb.from('vw_capas_lista').select('*').order('proximo_passo_data',{ascending:true,nullsFirst:false}).limit(300);
+  if(filtro.escopo==='minhas') q=q.eq('vendedor_id',EU.id);
+  else if(filtro.escopo==='loja') q=q.eq('loja_id',EU.loja_id);
+  if(filtro.status==='abertas') q=q.in('status',['Aberta','Em orçamento']);
+  else if(filtro.status!=='todas') q=q.eq('status',filtro.status);
+  const b=filtro.busca.trim().toLowerCase(); if(b) q=q.ilike('busca','%'+b.replace(/[%_]/g,'')+'%');
+  const {data,error}=await q; if(error) return erro(error);
+  const tot=data.reduce((s,c)=>s+Number(c.valor_em_negociacao||0),0), atras=data.filter(c=>c.proximo_passo_atrasado).length;
+  const cnt=t=>data.filter(c=>c.temperatura===t).length;
+  $('#kpis').innerHTML=`<div class="kpi"><b>${data.length}</b><span>capas</span></div><div class="kpi"><b>${brl(tot)}</b><span>em negociação (quentes)</span></div>
+    <div class="kpi"><b><span class="pill Quente">${cnt('Quente')}</span> <span class="pill Morna">${cnt('Morna')}</span> <span class="pill Fria">${cnt('Fria')}</span></b><span>quentes · mornas · frias</span></div>
+    <div class="kpi"><b class="${atras?'atras':''}">${atras}</b><span>próximo passo atrasado</span></div>`;
+  $('#res').innerHTML = data.length ? data.map(c=>`
+    <div class="capaCard" onclick="location.hash='#/capa/${c.id}'">
+      <div class="t"><b>${esc(c.pessoas_nomes||'(sem cliente vinculado)')}</b><span class="pill ${c.temperatura}">${c.temperatura}</span></div>
+      <div class="mut">${esc(c.numero)} · ${esc(c.status)} · ${esc(c.vendedor_nome||'')}</div>
+      <div class="mut">${esc([c.endereco,c.bairro].filter(Boolean).join(' – ')||'obra sem endereço')}${c.etapa?' · '+esc(c.etapa):''}</div>
+      <div style="margin-top:6px">${c.valor_em_negociacao>0?`<b>${brl(c.valor_em_negociacao)}</b> em negociação · `:''}
+        <span class="${c.proximo_passo_atrasado?'atras':''}">${c.proximo_passo?`Próximo: ${esc(c.proximo_passo)}${c.proximo_passo_data?' ('+dBR(c.proximo_passo_data)+')':''}`:'<span class="atras">sem próximo passo</span>'}</span></div>
+    </div>`).join('') : '<p class="mut">Nenhuma capa encontrada.</p>';
+}
+
+// ================= NOVA CAPA =================
+function novaCapa(){
+  $('#conteudo').innerHTML=`<div class="card" style="max-width:560px">
+    <h3>Nova Capa de Atendimento</h3>
+    <label>Loja</label><select id="nLoja" ${ehDirecao()?'':'disabled'}>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===EU.loja_id?'selected':''}>${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select>
+    <label>Tipo de entrada</label>${sel('tipo_entrada','','id="nTipo"')}
+    <label>Origem do cliente</label>${sel('origem','','id="nOrigem"')}
+    <label>Detalhe da origem (quem indicou, qual arquiteto…)</label><input id="nDet">
+    <label>Endereço da obra (se já souber)</label><input id="nEnd">
+    <div class="linha" style="margin-top:14px"><button class="gold" id="nCriar">Criar capa</button><button class="sec" onclick="history.back()">Cancelar</button></div>
+    <div id="nMsg"></div></div>`;
+  $('#nCriar').onclick=async()=>{
+    if(!$('#nTipo').value||!$('#nOrigem').value) return $('#nMsg').innerHTML='<div class="erro">Informe o tipo de entrada e a origem.</div>';
+    const loja=+$('#nLoja').value;
+    const {data:ob,error:e1}=await sb.from('obras').insert({loja_id:loja,endereco:$('#nEnd').value||null,criado_por:EU.id}).select().single(); if(e1) return erro(e1);
+    const {data:c,error:e2}=await sb.from('capas').insert({loja_id:loja,obra_id:ob.id,vendedor_id:EU.id,tipo_entrada:$('#nTipo').value,origem:$('#nOrigem').value,origem_detalhe:$('#nDet').value||null}).select().single(); if(e2) return erro(e2);
+    await sb.from('atividades').insert({capa_id:c.id,obra_id:ob.id,usuario_id:EU.id,loja_id:loja,tipo:$('#nTipo').value==='Prospecção ativa'?'Mapeamento de obra':'Visita do cliente à loja',resumo:'Abertura da capa'});
+    toast('Capa '+c.numero+' criada'); location.hash='#/capa/'+c.id;
+  };
+}
+
+// ================= CAPA =================
+let abaAtual='quem';
+async function abrirCapa(id){
+  $('#conteudo').innerHTML='<p class="mut">Carregando capa…</p>';
+  const {data:c,error}=await sb.from('capas').select('*').eq('id',id).single(); if(error) return erro(error);
+  const {data:ob}=c.obra_id?await sb.from('obras').select('*').eq('id',c.obra_id).single():{data:null};
+  CAPA={c,ob,podeEditar: ehDirecao() || c.vendedor_id===EU.id || (EU.papel==='gerente'&&c.loja_id===EU.loja_id)};
+  const vend=c.vendedor_id?(await sb.from('usuarios').select('nome').eq('id',c.vendedor_id).maybeSingle()).data:null;
+  const dis=CAPA.podeEditar?'':'disabled';
+  $('#conteudo').innerHTML=`
+   <div class="linha" style="justify-content:space-between"><button class="link" onclick="location.hash='#/capas'">← Capas</button><span class="mut">${CAPA.podeEditar?'':'Somente leitura (capa de outro vendedor) — você pode registrar produtos vistos e contatos.'}</span></div>
+   <div class="card">
+     <div class="linha" style="justify-content:space-between"><div><b style="font-size:18px">${esc(c.numero)}</b> <span class="mut">· aberta em ${dBR(c.data_abertura)} · ${esc(vend?.nome||'')}</span></div><div id="resumo"></div></div>
+     <div class="g3">
+       <div><label>Status</label>${sel('status_capa',c.status,`data-t="capas" data-f="status" ${dis}`)}</div>
+       <div><label>Próximo passo (obrigatório)</label><input data-t="capas" data-f="proximo_passo" value="${esc(c.proximo_passo)}" ${dis}></div>
+       <div><label>Data do próximo passo</label><input type="date" data-t="capas" data-f="proximo_passo_data" value="${c.proximo_passo_data||''}" ${dis}></div>
+     </div>
+     <div id="perdaBox" class="${c.status==='Perdida'?'':'hide'}"><label>Motivo da perda</label>${sel('motivo_perda',c.motivo_perda,`data-t="capas" data-f="motivo_perda" ${dis}`)}</div>
+   </div>
+   <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
+   <div id="aba"></div>`;
+  document.querySelectorAll('.tabs a').forEach(a=>a.onclick=e=>{e.preventDefault();abaAtual=a.dataset.aba;document.querySelectorAll('.tabs a').forEach(x=>x.classList.toggle('on',x===a));renderAba();});
+  ligarCampos($('#conteudo')); atualizarResumo(); renderAba();
+}
+function ligarCampos(root){
+  root.querySelectorAll('[data-t][data-f]').forEach(el=>{
+    if(el._lig) return; el._lig=1;
+    el.addEventListener('change',async()=>{
+      const t=el.dataset.t, f=el.dataset.f; let v=el.type==='checkbox'?el.checked:el.value; if(v==='') v=null;
+      if(el.type==='number'&&v!==null) v=Number(v);
+      if(t==='capas'&&f==='falou_com_decisor') v = v===null?null:v==='Sim';
+      const id = t==='capas'?CAPA.c.id : t==='obras'?CAPA.ob.id : el.dataset.id;
+      const {error}=await sb.from(t).update({[f]:v}).eq('id',id); if(error) return erro(error);
+      if(t==='capas'){CAPA.c[f]=v; if(f==='status') $('#perdaBox').classList.toggle('hide',v!=='Perdida');}
+      toast('Salvo ✓'); atualizarResumo();
+    });
+  });
+}
+async function atualizarResumo(){
+  const {data:r}=await sb.from('vw_capas_resumo').select('*').eq('id',CAPA.c.id).maybeSingle(); if(!r) return;
+  $('#resumo').innerHTML=`<span class="pill ${r.temperatura}" title="BANT: B${r.bant_b} A${r.bant_a} N${r.bant_n} T${r.bant_t}">${r.temperatura} · ${r.pontos}/4</span>
+   ${r.valor_em_negociacao>0?` <b style="margin-left:8px">${brl(r.valor_em_negociacao)}</b> <span class="mut">em negociação</span>`:''}`;
+}
+function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:abaCheck,orc:abaOrc,tempo:abaTempo})[abaAtual](); }
+
+// ---------- Quem e onde ----------
+async function abaQuem(){
+  const {c,ob,podeEditar}=CAPA; const dis=podeEditar?'':'disabled';
+  const {data:vs}=await sb.from('obra_pessoas').select('papel,decide,pessoa:pessoas(*)').eq('obra_id',ob.id);
+  $('#aba').innerHTML=`
+  <div class="card"><h3>Pessoas da obra</h3>
+    <div class="tbl"><table><tr><th>Nome</th><th>WhatsApp</th><th>Papel</th><th>Decide?</th><th>Cód. Santri</th><th></th></tr>
+    ${(vs||[]).map(v=>`<tr><td><input data-t="pessoas" data-f="nome" data-id="${v.pessoa.id}" value="${esc(v.pessoa.nome)}" ${dis}></td>
+      <td><input data-t="pessoas" data-f="whatsapp" data-id="${v.pessoa.id}" value="${esc(v.pessoa.whatsapp)}" ${dis}></td>
+      <td>${esc(v.papel)}</td><td>${v.decide?'Sim':'Não'}</td>
+      <td><input style="width:100px" data-t="pessoas" data-f="codigo_santri" data-id="${v.pessoa.id}" value="${esc(v.pessoa.codigo_santri)}" ${dis}></td>
+      <td>${podeEditar?`<button class="del" data-rm="${v.pessoa.id}|${esc(v.papel)}">remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">Nenhuma pessoa vinculada ainda. A obra pode ficar sem dono até você descobrir.</td></tr>'}
+    </table></div>
+    ${podeEditar?`<div class="card" style="background:#fafbfc;margin-top:12px"><b>Adicionar pessoa</b>
+      <div class="g3"><div><label>Buscar pelo nome ou WhatsApp</label><input id="pBusca" placeholder="digite para buscar ou cadastrar"></div>
+      <div><label>Papel na obra</label>${sel('papel_obra','','id="pPapel"')}</div>
+      <div><label>Decide a compra?</label><select id="pDecide"><option value="false">Não</option><option value="true">Sim</option></select></div></div>
+      <div id="pSug" class="sug hide" style="margin-top:6px"></div></div>`:''}
+  </div>
+  <div class="card"><h3>Obra</h3>
+    <div class="g2">
+      <div><label>Endereço</label><input data-t="obras" data-f="endereco" value="${esc(ob.endereco)}" ${dis}></div>
+      <div><label>Bairro</label><input data-t="obras" data-f="bairro" value="${esc(ob.bairro)}" ${dis}></div>
+      <div><label>Cidade</label><input data-t="obras" data-f="cidade" value="${esc(ob.cidade)}" ${dis}></div>
+      <div><label>Referência</label><input data-t="obras" data-f="referencia" value="${esc(ob.referencia)}" ${dis}></div>
+      <div><label>Tipo de obra</label>${sel('tipo_obra',ob.tipo_obra,`data-t="obras" data-f="tipo_obra" ${dis}`)}</div>
+      <div><label>Construção ou reforma</label>${sel('construcao_reforma',ob.construcao_reforma,`data-t="obras" data-f="construcao_reforma" ${dis}`)}</div>
+      <div><label>Etapa da obra</label>${sel('etapa_obra',ob.etapa,`data-t="obras" data-f="etapa" ${dis}`)}</div>
+      <div><label>Previsão de mudança</label><input type="date" data-t="obras" data-f="previsao_mudanca" value="${ob.previsao_mudanca||''}" ${dis}></div>
+      <div><label>Área construída (m²)</label><input type="number" data-t="obras" data-f="area_m2" value="${ob.area_m2??''}" ${dis}></div>
+      <div><label>Nº de banheiros</label><input type="number" data-t="obras" data-f="num_banheiros" value="${ob.num_banheiros??''}" ${dis}></div>
+    </div>
+    ${podeEditar?`<div style="margin-top:10px"><button class="sec" id="gps">📍 Usar minha localização atual (estou na obra)</button> <span class="mut">${ob.latitude?`Localização salva: ${ob.latitude}, ${ob.longitude}`:''}</span></div>`:''}
+  </div>
+  <div class="card"><h3>Origem</h3><div class="g2">
+    <div><label>Tipo de entrada</label>${sel('tipo_entrada',c.tipo_entrada,`data-t="capas" data-f="tipo_entrada" ${dis}`)}</div>
+    <div><label>Origem do cliente</label>${sel('origem',c.origem,`data-t="capas" data-f="origem" ${dis}`)}</div></div>
+    <label>Detalhe da origem</label><input data-t="capas" data-f="origem_detalhe" value="${esc(c.origem_detalhe)}" ${dis}></div>`;
+  ligarCampos($('#aba'));
+  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const [pid,papel]=b.dataset.rm.split('|');if(!confirm('Remover esta pessoa da obra?'))return;
+    const {error}=await sb.from('obra_pessoas').delete().eq('obra_id',ob.id).eq('pessoa_id',pid).eq('papel',papel);if(error)return erro(error);abaQuem();});
+  if($('#gps')) $('#gps').onclick=()=>navigator.geolocation.getCurrentPosition(async p=>{
+    const {error}=await sb.from('obras').update({latitude:p.coords.latitude.toFixed(7),longitude:p.coords.longitude.toFixed(7)}).eq('id',ob.id);
+    if(error) return erro(error); CAPA.ob.latitude=p.coords.latitude.toFixed(7); CAPA.ob.longitude=p.coords.longitude.toFixed(7); toast('Localização salva'); abaQuem();},()=>toast('Não foi possível obter a localização'));
+  if($('#pBusca')){ let t; $('#pBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>buscarPessoa(e.target.value),300)}; }
+}
+async function buscarPessoa(txt){
+  const box=$('#pSug'); txt=txt.trim(); if(txt.length<2){box.classList.add('hide');return;}
+  const dig=txt.replace(/\D/g,''); const t=txt.replace(/[%,]/g,'');
+  let q=sb.from('pessoas').select('id,nome,whatsapp,profissional,profissao').limit(8);
+  q = dig.length>=4 ? q.or(`whatsapp.ilike.%${dig}%,telefone.ilike.%${dig}%,nome.ilike.%${t}%`) : q.ilike('nome','%'+t+'%');
+  const {data}=await q;
+  box.classList.remove('hide');
+  box.innerHTML=(data||[]).map(p=>`<div data-p="${p.id}"><b>${esc(p.nome)}</b> <span class="mut">${esc(p.whatsapp||'')} ${p.profissional?'· '+esc(p.profissao||'profissional'):''}</span></div>`).join('')+
+    `<div data-novo="1" style="color:var(--navy)"><b>+ Cadastrar nova pessoa:</b> ${esc(txt)}</div>`;
+  box.querySelectorAll('[data-p]').forEach(d=>d.onclick=()=>vincularPessoa(d.dataset.p));
+  box.querySelector('[data-novo]').onclick=()=>novaPessoa(txt);
+}
+function novaPessoa(txt){
+  const ehNum=/^\+?[\d\s()-]{8,}$/.test(txt);
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Nova pessoa</h3>
+    <label>Nome</label><input id="npNome" value="${ehNum?'':esc(txt)}"><label>WhatsApp</label><input id="npWpp" value="${ehNum?esc(txt):''}">
+    <label>E-mail</label><input id="npEmail"><label>É profissional (arquiteto, designer, engenheiro)?</label>
+    <select id="npProf"><option value="">Não</option><option>Arquiteto(a)</option><option>Designer de interiores</option><option>Engenheiro(a)</option><option>Mestre de obras</option></select>
+    <div class="linha" style="margin-top:12px"><button class="gold" id="npOk">Salvar e vincular</button><button class="sec" id="npX">Cancelar</button></div></div></div>`;
+  $('#npX').onclick=()=>$('#modal').innerHTML='';
+  $('#npOk').onclick=async()=>{
+    if(!$('#npNome').value.trim()) return toast('Informe o nome');
+    const prof=$('#npProf').value;
+    const {data,error}=await sb.from('pessoas').insert({nome:$('#npNome').value.trim(),whatsapp:$('#npWpp').value.trim()||null,email:$('#npEmail').value.trim()||null,profissional:!!prof,profissao:prof||null,criado_por:EU.id}).select().single();
+    if(error) return erro(error); $('#modal').innerHTML=''; vincularPessoa(data.id);
+  };
+}
+async function vincularPessoa(pid){
+  const papel=$('#pPapel').value; if(!papel) return toast('Escolha o papel da pessoa na obra');
+  const {error}=await sb.from('obra_pessoas').insert({obra_id:CAPA.ob.id,pessoa_id:pid,papel,decide:$('#pDecide').value==='true'});
+  if(error) return erro(error.code==='23505'?{message:'Essa pessoa já tem esse papel na obra'}:error);
+  toast('Pessoa vinculada'); abaQuem();
+}
+
+// ---------- Qualificação (BANT) ----------
+async function abaBant(){
+  const {c,podeEditar}=CAPA; const dis=podeEditar?'':'disabled';
+  const {data:nec}=await sb.from('capa_necessidades').select('*').eq('capa_id',c.id);
+  const N={}; (nec||[]).forEach(n=>N[n.categoria]=n);
+  $('#aba').innerHTML=`
+  <div class="card"><h3>B · Orçamento do cliente</h3><div class="g3">
+    <div><label>Faixa de investimento</label>${sel('faixa_investimento',c.faixa_investimento,`data-t="capas" data-f="faixa_investimento" ${dis}`)}</div>
+    <div><label>Forma de pagamento pretendida</label>${sel('pagamento_pretendido',c.pagamento_pretendido,`data-t="capas" data-f="pagamento_pretendido" ${dis}`)}</div>
+    <div><label>Budget definido?</label>${sel('budget_definido',c.budget_definido,`data-t="capas" data-f="budget_definido" ${dis}`)}</div></div></div>
+  <div class="card"><h3>A · Autoridade</h3><div class="g3">
+    <div><label>Já falei com quem decide?</label><select data-t="capas" data-f="falou_com_decisor" ${dis}><option value=""></option><option ${c.falou_com_decisor===true?'selected':''}>Sim</option><option ${c.falou_com_decisor===false?'selected':''}>Não</option></select></div>
+    <div><label>Quem decide</label><input data-t="capas" data-f="decisor_texto" value="${esc(c.decisor_texto)}" ${dis}></div>
+    <div><label>Quem influencia</label><input data-t="capas" data-f="influenciadores_texto" value="${esc(c.influenciadores_texto)}" ${dis}></div></div></div>
+  <div class="card"><h3>T · Momento</h3><div class="g2">
+    <div><label>Quando vai comprar a primeira categoria</label>${sel('prazo_compra',c.prazo_compra,`data-t="capas" data-f="prazo_compra" ${dis}`)}</div>
+    <div><label>Estilo / referências</label><input data-t="capas" data-f="estilo_referencias" value="${esc(c.estilo_referencias)}" ${dis}></div></div>
+    <p class="mut">A etapa da obra fica na aba "Quem e onde".</p></div>
+  <div class="card"><h3>N · Necessidades por categoria</h3><div class="tbl"><table>
+    <tr><th>Categoria</th><th>Precisa?</th><th>Quando (mês)</th><th>Status</th><th>Observação</th></tr>
+    ${(OP.categoria||[]).map(cat=>{const n=N[cat]||{};return `<tr data-cat="${esc(cat)}"><td>${esc(cat)}</td>
+      <td>${sel('precisa',n.precisa,`data-n="precisa" ${dis}`)}</td>
+      <td><input type="month" data-n="quando" value="${n.quando?n.quando.slice(0,7):''}" ${dis}></td>
+      <td>${sel('status_categoria',n.status,`data-n="status" ${dis}`)}</td>
+      <td><input data-n="observacao" value="${esc(n.observacao)}" ${dis}></td></tr>`}).join('')}
+  </table></div></div>`;
+  ligarCampos($('#aba'));
+  document.querySelectorAll('[data-n]').forEach(el=>el.addEventListener('change',async()=>{
+    const cat=el.closest('tr').dataset.cat; let v=el.value||null; if(el.dataset.n==='quando'&&v) v=v+'-01';
+    const {error}=await sb.from('capa_necessidades').upsert({capa_id:CAPA.c.id,categoria:cat,[el.dataset.n]:v},{onConflict:'capa_id,categoria'});
+    if(error) return erro(error); toast('Salvo ✓'); atualizarResumo();
+  }));
+}
+
+// ---------- Produtos vistos ----------
+let prodSel=null;
+async function abaProdutos(){
+  const {data:pv}=await sb.from('capa_produtos_vistos').select('*,produto:produtos(id,nome,marca,codigo_original,unidade)').eq('capa_id',CAPA.c.id).order('criado_em',{ascending:false});
+  const cor={'Amou':'#c62828','Gostou':'#2e7d32','Talvez':'#e08e0b','Não gostou':'#6b7684'};
+  $('#aba').innerHTML=`
+  <div class="card"><h3>Registrar produto que o cliente viu</h3>
+    <label>Buscar produto (nome, código Santri ou código da fábrica)</label><input id="prBusca" placeholder="ex.: York, 6063443A, Timeless…">
+    <div id="prSug" class="sug hide" style="margin-top:6px"></div>
+    <div id="prForm" class="hide" style="margin-top:10px">
+      <div class="item" id="prEscolhido"></div>
+      <div class="g3"><div><label>Ambiente</label><input id="prAmb" placeholder="ex.: Banho master"></div>
+      <div><label>Reação do cliente</label>${sel('reacao','','id="prReacao"')}</div>
+      <div><label>Observação</label><input id="prObs" placeholder="cor, formato, dúvida de preço…"></div></div>
+      <div class="linha" style="margin-top:10px"><button class="gold" id="prAdd">Adicionar</button><button class="sec" id="prCanc">Cancelar</button></div>
+    </div>
+  </div>
+  <div class="card"><h3>O que o cliente já viu (${(pv||[]).length})</h3>
+    ${(pv||[]).map(p=>`<div class="item"><div class="linha" style="justify-content:space-between"><b>${esc(p.produto?.nome||p.descricao_livre)}</b>
+      <span class="pill" style="background:${cor[p.reacao]||'#999'}">${esc(p.reacao||'—')}</span></div>
+      <div class="mut">${esc(p.ambiente||'')}${p.produto?` · ${esc(p.produto.marca||'')} · cód. ${p.produto.id} / ${esc(p.produto.codigo_original||'')}`:''} · ${dBR(p.data)}</div>
+      ${p.observacao?`<div>${esc(p.observacao)}</div>`:''}
+      ${(CAPA.podeEditar||p.registrado_por===EU.id)?`<button class="del" data-rmpv="${p.id}">remover</button>`:''}</div>`).join('')||'<p class="mut">Nada registrado ainda.</p>'}
+  </div>`;
+  let t; $('#prBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>buscarProduto(e.target.value),300)};
+  $('#prCanc').onclick=()=>{prodSel=null;$('#prForm').classList.add('hide');};
+  $('#prAdd').onclick=async()=>{
+    if(!$('#prReacao').value) return toast('Escolha a reação do cliente');
+    const reg={capa_id:CAPA.c.id,ambiente:$('#prAmb').value||null,reacao:$('#prReacao').value,observacao:$('#prObs').value||null,registrado_por:EU.id};
+    if(prodSel.id) reg.produto_id=prodSel.id; else reg.descricao_livre=prodSel.nome;
+    const {error}=await sb.from('capa_produtos_vistos').insert(reg); if(error) return erro(error);
+    toast('Produto registrado'); prodSel=null; abaProdutos();
+  };
+  document.querySelectorAll('[data-rmpv]').forEach(b=>b.onclick=async()=>{if(!confirm('Remover?'))return;const {error}=await sb.from('capa_produtos_vistos').delete().eq('id',b.dataset.rmpv);if(error)return erro(error);abaProdutos();});
+}
+async function buscarProduto(txt){
+  const box=$('#prSug'); txt=txt.trim(); if(txt.length<2){box.classList.add('hide');return;}
+  const t=txt.replace(/[%,()]/g,''); let q=sb.from('produtos').select('id,nome,marca,codigo_original,unidade').eq('ativo',true).limit(15);
+  q = /^\d+$/.test(t) ? q.or(`id.eq.${t},codigo_original.ilike.%${t}%`) : q.or(t.split(/\s+/).length>1?`nome.ilike.%${t.split(/\s+/).join('%')}%`:`nome.ilike.%${t}%,codigo_original.ilike.%${t}%`);
+  const {data,error}=await q; if(error) return erro(error);
+  box.classList.remove('hide');
+  box.innerHTML=(data||[]).map(p=>`<div data-id="${p.id}"><b>${esc(p.nome)}</b><br><span class="mut">${esc(p.marca||'')} · cód. ${p.id} · ${esc(p.codigo_original||'')} · ${esc(p.unidade||'')}</span></div>`).join('')+
+    `<div data-livre="1" style="color:var(--navy)">+ Não achei — registrar como texto livre: <b>${esc(txt)}</b></div>`;
+  box.querySelectorAll('[data-id]').forEach(d=>d.onclick=()=>{const p=data.find(x=>x.id==d.dataset.id);escolherProduto(p);});
+  box.querySelector('[data-livre]').onclick=()=>escolherProduto({nome:txt});
+}
+function escolherProduto(p){prodSel=p;$('#prSug').classList.add('hide');$('#prForm').classList.remove('hide');
+  $('#prEscolhido').innerHTML=`<b>${esc(p.nome)}</b> <span class="mut">${p.id?esc(p.marca||'')+' · cód. '+p.id:'(texto livre)'}</span>`;}
+
+// ---------- Checklist ----------
+async function abaCheck(){
+  const {data:ck}=await sb.from('capa_checklist').select('*').eq('capa_id',CAPA.c.id);
+  const K={}; (ck||[]).forEach(k=>K[k.acao]=k); const dis=CAPA.podeEditar?'':'disabled';
+  const feitos=(OP.acao_checklist||[]).filter(a=>K[a]?.feito).length, tot=(OP.acao_checklist||[]).length;
+  $('#aba').innerHTML=`<div class="card"><h3>Checklist do vendedor — ${feitos} de ${tot}</h3>
+    ${(OP.acao_checklist||[]).map(a=>{const k=K[a]||{};return `<div class="chk" data-acao="${esc(a)}"><input type="checkbox" ${k.feito?'checked':''} ${dis}><div class="txt">${esc(a)}</div><input type="date" value="${k.data||''}" ${dis}></div>`}).join('')}
+  </div>`;
+  document.querySelectorAll('.chk').forEach(row=>{
+    const [cb,dt]=row.querySelectorAll('input');
+    const salvar=async()=>{ if(cb.checked&&!dt.value) dt.value=hoje();
+      const {error}=await sb.from('capa_checklist').upsert({capa_id:CAPA.c.id,acao:row.dataset.acao,feito:cb.checked,data:dt.value||null},{onConflict:'capa_id,acao'});
+      if(error) return erro(error); toast('Salvo ✓'); };
+    cb.onchange=salvar; dt.onchange=salvar;
+  });
+}
+
+// ---------- Orçamentos ----------
+async function abaOrc(){
+  const {data:os}=await sb.from('orcamentos').select('*').eq('capa_id',CAPA.c.id).order('criado_em',{ascending:false});
+  const dis=CAPA.podeEditar?'':'disabled';
+  $('#aba').innerHTML=`
+  <div class="aviso">Em breve: arrastar o PDF do orçamento do Santri e o sistema preenche sozinho (itens, ambientes e opções). Por enquanto, lance o resumo manualmente.</div>
+  ${CAPA.podeEditar?`<div class="card"><h3>Adicionar orçamento</h3><div class="g3">
+    <div><label>Nº orçamento Santri</label><input id="oNum"></div><div><label>Versão</label><input id="oVer" value="01"></div>
+    <div><label>Data</label><input type="date" id="oData" value="${hoje()}"></div>
+    <div><label>Momento</label>${sel('momento','','id="oMom"')}</div>
+    <div><label>Valor total do PDF (R$)</label><input type="number" step="0.01" id="oTot"></div>
+    <div><label>Valor provável (R$) — sem as opções que não vai levar</label><input type="number" step="0.01" id="oProv"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" id="oQuente" style="width:auto"> Este é o orçamento QUENTE deste momento</label>
+    <button class="gold" id="oAdd" style="margin-top:8px">Adicionar</button></div>`:''}
+  <div class="card"><h3>Orçamentos desta capa</h3><div class="tbl"><table>
+    <tr><th>Nº / versão</th><th>Data</th><th>Momento</th><th>Total PDF</th><th>Provável</th><th>Quente?</th><th>Status</th><th>Motivo se perdido</th></tr>
+    ${(os||[]).map(o=>`<tr><td>${esc(o.numero_santri||'')} / ${esc(o.versao||'')}</td><td>${dBR(o.data_emissao)}</td><td>${esc(o.momento||'')}</td>
+      <td>${brl(o.valor_total_pdf)}</td><td><input type="number" step="0.01" style="width:120px" data-t="orcamentos" data-f="valor_provavel" data-id="${o.id}" value="${o.valor_provavel??''}" ${dis}></td>
+      <td><input type="checkbox" data-quente="${o.id}" ${o.quente?'checked':''} ${dis} style="width:22px;height:22px"></td>
+      <td>${sel('status_orcamento',o.status,`data-t="orcamentos" data-f="status" data-id="${o.id}" ${dis}`)}</td>
+      <td>${sel('motivo_perda',o.motivo_perda,`data-t="orcamentos" data-f="motivo_perda" data-id="${o.id}" ${dis}`)}</td></tr>`).join('')||'<tr><td colspan="8" class="mut">Nenhum orçamento ainda.</td></tr>'}
+  </table></div></div>`;
+  ligarCampos($('#aba'));
+  document.querySelectorAll('[data-quente]').forEach(cb=>cb.onchange=async()=>{
+    const {error}=await sb.from('orcamentos').update({quente:cb.checked}).eq('id',cb.dataset.quente);
+    if(error){cb.checked=!cb.checked;return erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Desmarque o outro primeiro.'}:error);}
+    toast('Salvo ✓'); atualizarResumo();
+  });
+  if($('#oAdd')) $('#oAdd').onclick=async()=>{
+    if(!$('#oMom').value) return toast('Escolha o momento');
+    const reg={capa_id:CAPA.c.id,numero_santri:$('#oNum').value||null,versao:$('#oVer').value||null,data_emissao:$('#oData').value||null,momento:$('#oMom').value,
+      valor_total_pdf:$('#oTot').value?Number($('#oTot').value):null,valor_provavel:$('#oProv').value?Number($('#oProv').value):($('#oTot').value?Number($('#oTot').value):null),quente:$('#oQuente').checked,criado_por:EU.id};
+    const {error}=await sb.from('orcamentos').insert(reg);
+    if(error) return erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Desmarque o outro primeiro.'}:error);
+    if(CAPA.c.status==='Aberta'){await sb.from('capas').update({status:'Em orçamento'}).eq('id',CAPA.c.id);CAPA.c.status='Em orçamento';}
+    await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Orçamento enviado',resumo:`Orçamento ${reg.numero_santri||''} (${reg.momento}) ${brl(reg.valor_total_pdf)}`});
+    toast('Orçamento adicionado'); abaOrc(); atualizarResumo();
+  };
+}
+
+// ---------- Linha do tempo ----------
+async function abaTempo(){
+  const {data:at}=await sb.from('atividades').select('*,usuario:usuarios(nome)').eq('capa_id',CAPA.c.id).order('data',{ascending:false});
+  $('#aba').innerHTML=`
+  <div class="card"><h3>Registrar contato</h3><div class="g3">
+    <div><label>Data</label><input type="date" id="aData" value="${hoje()}"></div>
+    <div><label>Atividade</label>${sel('tipo_atividade','','id="aTipo"')}</div>
+    <div><label>Com quem</label><input id="aQuem"></div></div>
+    <label>O que aconteceu</label><textarea id="aRes"></textarea>
+    <label>Próximo passo combinado</label><input id="aProx">
+    <button class="gold" id="aAdd" style="margin-top:10px">Registrar</button></div>
+  <div class="card"><h3>Histórico</h3>
+    ${(at||[]).map(a=>`<div class="item"><b>${dBR(a.data.slice(0,10))} · ${esc(a.tipo)}</b> <span class="mut">${esc(a.usuario?.nome||'')}${a.com_quem?' · com '+esc(a.com_quem):''}</span>
+      ${a.resumo?`<div>${esc(a.resumo)}</div>`:''}${a.proximo_passo?`<div class="mut">Próximo: ${esc(a.proximo_passo)}</div>`:''}</div>`).join('')||'<p class="mut">Sem registros.</p>'}</div>`;
+  $('#aAdd').onclick=async()=>{
+    if(!$('#aTipo').value) return toast('Escolha a atividade');
+    const {error}=await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:$('#aTipo').value,
+      data:$('#aData').value+'T12:00:00',com_quem:$('#aQuem').value||null,resumo:$('#aRes').value||null,proximo_passo:$('#aProx').value||null});
+    if(error) return erro(error);
+    if($('#aProx').value && CAPA.podeEditar){ await sb.from('capas').update({proximo_passo:$('#aProx').value}).eq('id',CAPA.c.id); }
+    toast('Registrado'); if($('#aProx').value&&CAPA.podeEditar) abrirCapa(CAPA.c.id); else abaTempo();
+  };
+}
+
+// ================= USUÁRIOS (direção) =================
+async function telaUsuarios(){
+  if(!ehDirecao()) return telaLista();
+  const {data}=await sb.from('usuarios').select('*').order('ativo').order('nome');
+  const papeis=['vendedor','gerente','direcao','admin','logistica','financeiro','compras'];
+  $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Usuários</h2>
+  <p class="mut">Quem cria acesso entra bloqueado. Marque "Ativo", escolha a loja e o papel para liberar.</p>
+  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th></tr>
+  ${(data||[]).map(u=>`<tr style="${u.ativo?'':'background:#fff8e6'}"><td>${esc(u.nome)}</td><td class="mut">${esc(u.email)}</td>
+    <td><input type="checkbox" data-t="usuarios" data-f="ativo" data-id="${u.id}" ${u.ativo?'checked':''} ${u.id===EU.id?'disabled':''} style="width:22px;height:22px"></td>
+    <td><select data-t="usuarios" data-f="loja_id" data-id="${u.id}"><option value=""></option>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===u.loja_id?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select></td>
+    <td><select data-t="usuarios" data-f="papel" data-id="${u.id}" ${u.id===EU.id?'disabled':''}>${papeis.map(p=>`<option ${p===u.papel?'selected':''}>${p}</option>`).join('')}</select></td></tr>`).join('')}
+  </table></div>`;
+  ligarCampos($('#conteudo'));
+}
+</script>
+</body>
+</html>
