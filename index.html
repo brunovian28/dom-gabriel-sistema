@@ -36,7 +36,7 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
 @media (max-width:800px){.g2,.g3{grid-template-columns:1fr}}
 .pill{display:inline-block;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:bold;color:#fff}
-.Quente{background:var(--quente)}.Morna{background:var(--morna)}.Fria{background:var(--fria)}
+.kpi .pill{color:#fff!important;font-size:13px}.Quente{background:var(--quente)}.Morna{background:var(--morna)}.Fria{background:var(--fria)}
 .lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
 .capaCard{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:12px;cursor:pointer}
 .capaCard:hover{border-color:var(--navy2)}
@@ -430,43 +430,247 @@ async function abaCheck(){
 }
 
 // ---------- Orçamentos ----------
+const PDFJS_V='3.11.174';
+let _pdfjs=null;
+async function carregarPdfjs(){
+  if(_pdfjs) return _pdfjs;
+  await new Promise((ok,falha)=>{const s=document.createElement('script');s.src=`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_V}/build/pdf.min.js`;s.onload=ok;s.onerror=()=>falha(new Error('Não consegui carregar o leitor de PDF'));document.head.appendChild(s);});
+  _pdfjs=window.pdfjsLib; _pdfjs.GlobalWorkerOptions.workerSrc=`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_V}/build/pdf.worker.min.js`;
+  return _pdfjs;
+}
+// ===== Leitor de orçamento Santri (usa pdf.js). Funciona no navegador e no node =====
+async function lerOrcamentoPDF(pdfjsLib, data){
+  const doc = await pdfjsLib.getDocument({data}).promise;
+  const linhas=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const pg=await doc.getPage(p); const tc=await pg.getTextContent();
+    const its=tc.items.filter(i=>i.str.trim()).map(i=>({s:i.str.trim(),x:i.transform[4],y:Math.round(i.transform[5]),w:i.width}));
+    const porY={}; its.forEach(i=>{const k=Object.keys(porY).find(y=>Math.abs(y-i.y)<=2); (porY[k??i.y]=porY[k??i.y]||[]).push(i);});
+    Object.keys(porY).map(Number).sort((a,b)=>b-a).forEach(y=>linhas.push({pag:p,y,its:porY[y].sort((a,b)=>a.x-b.x)}));
+  }
+  const txt=l=>l.its.map(i=>i.s).join(' ');
+  const num=s=>{s=String(s||'').trim();if(!s)return null;return Number(s.replace(/\./g,'').replace(',','.'))};
+  const todo=linhas.map(txt).join('\n');
+  const pega=(re)=>{const m=todo.match(re);return m?m[1].trim():null};
+  const dt=s=>{const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
+  const cab={
+    numero: pega(/Orçamento:\s*([\d.]+)/), data_emissao: dt(pega(/Data emissão:\s*([\d\/]+)/)), data_validade: dt(pega(/Data de validade:\s*([\d\/]+)/)),
+    vendedor: pega(/Vendedor:\s*(.+?)(?:\s+Fone|\n|$)/), condicao_pagamento: pega(/Condição de pagamento:\s*(.+)/),
+    cliente: pega(/Cliente:\s*(.+?)(?:\s+A\/C:|\n|$)/), loja: pega(/DOM GABRIEL[^\n]*?-\s*(PVA|RV)/)
+  };
+  // colunas pelo cabeçalho da tabela
+  const hl=linhas.find(l=>/Cod\. original/.test(txt(l)) && /Total/.test(txt(l)));
+  if(!hl) throw new Error('Não encontrei a tabela de produtos neste PDF. É um orçamento do Santri?');
+  const col={}; hl.its.forEach(i=>{const k=i.s.toLowerCase();
+    if(k.startsWith('cod'))col.cod=i.x; else if(k==='produto')col.prod=i.x; else if(k.startsWith('descri'))col.desc=i.x; else if(k==='marca')col.marca=i.x;
+    else if(k==='und')col.und=i.x; else if(k.startsWith('qtd'))col.qtd=i.x+i.w; else if(k.startsWith('preco'))col.preco=i.x+i.w; else if(k==='total')col.total=i.x+i.w;});
+  const itens=[]; let amb=null; let ordem=0;
+  const hdrIdx=linhas.indexOf(hl);
+  for(const l of linhas.slice(hdrIdx+1)){
+    const t=txt(l);
+    if(/^TOTAIS/.test(t)||/Total produtos\s*$/.test(t)) break;
+    if(/Cod\. original|Emitido em|ADM \d|Página:/.test(t)) continue;
+    if(/Total produtos:/.test(t)) continue;
+    // linha de item: tem número no fim (total) alinhado à coluna Total
+    const ult=l.its[l.its.length-1];
+    const temTotal = /^[\d.]+,\d{2}$/.test(ult.s) && Math.abs((ult.x+ult.w)-col.total)<40;
+    if(temTotal && l.its.length>=6){
+      const r=l.its; const nums=r.filter(i=>/^[\d.]+,\d+$/.test(i.s));
+      const total=num(nums[nums.length-1].s), preco=num(nums[nums.length-2].s), qtd=num(nums[nums.length-3].s);
+      const und=r.find(i=>Math.abs(i.x-col.und)<25 && /^[A-ZÇ]{1,4}\d?$/.test(i.s));
+      const marca=r.filter(i=>i.x>=col.marca-5 && i.x<col.und-5).map(i=>i.s).join(' ');
+      const desc=r.filter(i=>i.x>=col.desc-5 && i.x<col.marca-5).map(i=>i.s).join(' ');
+      const pre=r.filter(i=>i.x<col.desc-5).map(i=>i.s).filter(s=>s!=='(*)');
+      const codProd=pre.length?pre[pre.length-1]:null, codOrig=pre.length>1?pre[0].replace(/^\(\*\)\s*/,''):null;
+      itens.push({ordem:++ordem,ambiente:amb,sob_encomenda:r.some(i=>i.s.startsWith('(*)')),codigo_original:codOrig,produto_id:codProd&&/^[\d.]+$/.test(codProd)?Number(codProd.replace(/\./g,'')):null,
+        descricao:desc,marca,unidade:und?und.s:null,quantidade:qtd,preco_unitario:preco,total});
+    } else if(!/\d{2}\/\d{2}\/\d{4}/.test(t) && l.its.every(i=>i.x>=col.prod-10 && i.x<col.marca+60)) {
+      amb=t.trim();
+    }
+  }
+  const tg=todo.match(/TOTAL GERAL[\s\S]*?([\d.]+,\d{2})\s*$/m); 
+  const totalLinhas=linhas.map(txt); let totalGeral=null;
+  const iTG=totalLinhas.findIndex(s=>/TOTAL GERAL/.test(s)); if(iTG>=0){ for(let k=iTG;k<Math.min(iTG+3,totalLinhas.length);k++){ const m=totalLinhas[k].match(/([\d.]+,\d{2})\s*$/); if(m){totalGeral=num(m[1]);} } }
+  return {cabecalho:cab,itens,total_geral:totalGeral ?? itens.reduce((s,i)=>s+i.total,0)};
+}
+// sugere grupos de opções: mesmo ambiente + mesma unidade + mesma quantidade
+function sugerirOpcoes(itens){
+  const grupos={}; let g=0;
+  const chave=i=>`${i.ambiente}|${i.unidade}|${(i.quantidade||0).toFixed(3)}`;
+  const cont={}; itens.forEach(i=>cont[chave(i)]=(cont[chave(i)]||0)+1);
+  itens.forEach(i=>{ const k=chave(i); if(cont[k]>1){ if(!grupos[k]) grupos[k]=++g; i.grupo_opcao=grupos[k];
+     i.opcao_confirmada=/OP[ÇC]/i.test(i.ambiente||''); } else { i.grupo_opcao=null; i.opcao_confirmada=false; } });
+  // escolhido padrão: em cada grupo, o mais barato
+  Object.values(grupos).forEach(gid=>{ const gs=itens.filter(i=>i.grupo_opcao===gid); const m=gs.reduce((a,b)=>b.total<a.total?b:a); gs.forEach(i=>i.escolhido=(i===m)); });
+  itens.forEach(i=>{ if(i.grupo_opcao==null) i.escolhido=true; });
+  return itens;
+}
+// valor provável: itens sem grupo + escolhido de cada grupo confirmado; grupo não confirmado conta tudo
+function valorProvavel(itens){
+  return itens.reduce((s,i)=> s + ( i.grupo_opcao==null ? i.total : (i.opcao_confirmada ? (i.escolhido?i.total:0) : i.total) ), 0);
+}
+
+
+let ORC_NOVO=null;
 async function abaOrc(){
   const {data:os}=await sb.from('orcamentos').select('*').eq('capa_id',CAPA.c.id).order('criado_em',{ascending:false});
   const dis=CAPA.podeEditar?'':'disabled';
   $('#aba').innerHTML=`
-  <div class="aviso">Em breve: arrastar o PDF do orçamento do Santri e o sistema preenche sozinho (itens, ambientes e opções). Por enquanto, lance o resumo manualmente.</div>
-  ${CAPA.podeEditar?`<div class="card"><h3>Adicionar orçamento</h3><div class="g3">
+  ${CAPA.podeEditar?`<div class="card"><h3>Subir orçamento do Santri (PDF)</h3>
+    <div id="orcDrop" class="drop" style="border:2px dashed #aab4c0;border-radius:10px;padding:24px;text-align:center;color:var(--mut);cursor:pointer">Arraste aqui o PDF do orçamento<br><small>ou toque para escolher</small></div>
+    <input type="file" id="orcFile" accept="application/pdf" class="hide">
+    <div id="orcRev"></div>
+    <details style="margin-top:10px"><summary class="mut">Lançar sem PDF (manual)</summary>${formManual()}</details></div>`:''}
+  <div class="card"><h3>Orçamentos desta capa</h3>
+    ${(os||[]).map(o=>`<div class="item">
+      <div class="linha" style="justify-content:space-between"><b>Orç. ${esc(o.numero_santri||'s/nº')}${o.versao?' · v'+esc(o.versao):''} · ${esc(o.momento||'')}</b>
+        <span>${o.quente?'<span class="pill Quente">QUENTE</span>':''}</span></div>
+      <div class="mut">${dBR(o.data_emissao)}${o.data_validade?' · validade '+dBR(o.data_validade):''}${o.condicao_pagamento?' · '+esc(o.condicao_pagamento):''}</div>
+      <div>PDF: ${brl(o.valor_total_pdf)} · <b>Provável: ${brl(o.valor_provavel)}</b></div>
+      <div class="g3">
+        <div><label>Quente?</label><select data-quente="${o.id}" ${dis}><option value="false">Não</option><option value="true" ${o.quente?'selected':''}>Sim</option></select></div>
+        <div><label>Status</label>${sel('status_orcamento',o.status,`data-t="orcamentos" data-f="status" data-id="${o.id}" ${dis}`)}</div>
+        <div><label>Motivo se perdido</label>${sel('motivo_perda',o.motivo_perda,`data-t="orcamentos" data-f="motivo_perda" data-id="${o.id}" ${dis}`)}</div>
+      </div>
+      <div class="linha" style="margin-top:8px">
+        ${o.lido_do_pdf?`<button class="sec" data-itens="${o.id}">Ver itens e opções</button>`:''}
+        ${o.pdf_path?`<button class="link" data-pdf="${esc(o.pdf_path)}">Abrir PDF</button>`:''}
+        ${CAPA.podeEditar?`<button class="del" data-rmorc="${o.id}">excluir</button>`:''}
+      </div><div id="itens_${o.id}"></div></div>`).join('')||'<p class="mut">Nenhum orçamento ainda.</p>'}
+  </div>`;
+  ligarCampos($('#aba'));
+  document.querySelectorAll('[data-quente]').forEach(s=>s.onchange=async()=>{
+    const {error}=await sb.from('orcamentos').update({quente:s.value==='true'}).eq('id',s.dataset.quente);
+    if(error){s.value=s.value==='true'?'false':'true';return erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Desmarque o outro primeiro.'}:error);}
+    toast('Salvo ✓'); atualizarResumo();
+  });
+  document.querySelectorAll('[data-pdf]').forEach(b=>b.onclick=async()=>{const {data,error}=await sb.storage.from('capas').createSignedUrl(b.dataset.pdf,600);if(error)return erro(error);window.open(data.signedUrl,'_blank');});
+  document.querySelectorAll('[data-rmorc]').forEach(b=>b.onclick=async()=>{if(!confirm('Excluir este orçamento?'))return;const {error}=await sb.from('orcamentos').delete().eq('id',b.dataset.rmorc);if(error)return erro(error);toast('Excluído');abaOrc();atualizarResumo();});
+  document.querySelectorAll('[data-itens]').forEach(b=>b.onclick=()=>editarItensSalvos(b.dataset.itens));
+  if(CAPA.podeEditar){
+    const d=$('#orcDrop'); d.onclick=()=>$('#orcFile').click();
+    d.ondragover=e=>{e.preventDefault();d.style.borderColor='var(--gold)'}; d.ondragleave=()=>d.style.borderColor='#aab4c0';
+    d.ondrop=e=>{e.preventDefault();d.style.borderColor='#aab4c0';if(e.dataTransfer.files[0])lerPDF(e.dataTransfer.files[0])};
+    $('#orcFile').onchange=e=>{if(e.target.files[0])lerPDF(e.target.files[0])};
+    ligarManual();
+  }
+}
+function formManual(){return `<div class="g3">
     <div><label>Nº orçamento Santri</label><input id="oNum"></div><div><label>Versão</label><input id="oVer" value="01"></div>
     <div><label>Data</label><input type="date" id="oData" value="${hoje()}"></div>
     <div><label>Momento</label>${sel('momento','','id="oMom"')}</div>
-    <div><label>Valor total do PDF (R$)</label><input type="number" step="0.01" id="oTot"></div>
-    <div><label>Valor provável (R$) — sem as opções que não vai levar</label><input type="number" step="0.01" id="oProv"></div></div>
-    <label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" id="oQuente" style="width:auto"> Este é o orçamento QUENTE deste momento</label>
-    <button class="gold" id="oAdd" style="margin-top:8px">Adicionar</button></div>`:''}
-  <div class="card"><h3>Orçamentos desta capa</h3><div class="tbl"><table>
-    <tr><th>Nº / versão</th><th>Data</th><th>Momento</th><th>Total PDF</th><th>Provável</th><th>Quente?</th><th>Status</th><th>Motivo se perdido</th></tr>
-    ${(os||[]).map(o=>`<tr><td>${esc(o.numero_santri||'')} / ${esc(o.versao||'')}</td><td>${dBR(o.data_emissao)}</td><td>${esc(o.momento||'')}</td>
-      <td>${brl(o.valor_total_pdf)}</td><td><input type="number" step="0.01" style="width:120px" data-t="orcamentos" data-f="valor_provavel" data-id="${o.id}" value="${o.valor_provavel??''}" ${dis}></td>
-      <td><input type="checkbox" data-quente="${o.id}" ${o.quente?'checked':''} ${dis} style="width:22px;height:22px"></td>
-      <td>${sel('status_orcamento',o.status,`data-t="orcamentos" data-f="status" data-id="${o.id}" ${dis}`)}</td>
-      <td>${sel('motivo_perda',o.motivo_perda,`data-t="orcamentos" data-f="motivo_perda" data-id="${o.id}" ${dis}`)}</td></tr>`).join('')||'<tr><td colspan="8" class="mut">Nenhum orçamento ainda.</td></tr>'}
-  </table></div></div>`;
-  ligarCampos($('#aba'));
-  document.querySelectorAll('[data-quente]').forEach(cb=>cb.onchange=async()=>{
-    const {error}=await sb.from('orcamentos').update({quente:cb.checked}).eq('id',cb.dataset.quente);
-    if(error){cb.checked=!cb.checked;return erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Desmarque o outro primeiro.'}:error);}
-    toast('Salvo ✓'); atualizarResumo();
-  });
-  if($('#oAdd')) $('#oAdd').onclick=async()=>{
-    if(!$('#oMom').value) return toast('Escolha o momento');
-    const reg={capa_id:CAPA.c.id,numero_santri:$('#oNum').value||null,versao:$('#oVer').value||null,data_emissao:$('#oData').value||null,momento:$('#oMom').value,
-      valor_total_pdf:$('#oTot').value?Number($('#oTot').value):null,valor_provavel:$('#oProv').value?Number($('#oProv').value):($('#oTot').value?Number($('#oTot').value):null),quente:$('#oQuente').checked,criado_por:EU.id};
-    const {error}=await sb.from('orcamentos').insert(reg);
-    if(error) return erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Desmarque o outro primeiro.'}:error);
-    if(CAPA.c.status==='Aberta'){await sb.from('capas').update({status:'Em orçamento'}).eq('id',CAPA.c.id);CAPA.c.status='Em orçamento';}
-    await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Orçamento enviado',resumo:`Orçamento ${reg.numero_santri||''} (${reg.momento}) ${brl(reg.valor_total_pdf)}`});
-    toast('Orçamento adicionado'); abaOrc(); atualizarResumo();
+    <div><label>Valor total (R$)</label><input type="number" step="0.01" id="oTot"></div>
+    <div><label>Valor provável (R$)</label><input type="number" step="0.01" id="oProv"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" id="oQuente" style="width:auto"> Orçamento QUENTE deste momento</label>
+    <button class="gold" id="oAdd" style="margin-top:8px">Adicionar</button>`;}
+function ligarManual(){ $('#oAdd').onclick=async()=>{
+  if(!$('#oMom').value) return toast('Escolha o momento');
+  const tot=$('#oTot').value?Number($('#oTot').value):null;
+  await salvarOrcamento({numero_santri:$('#oNum').value||null,versao:$('#oVer').value||null,data_emissao:$('#oData').value||null,momento:$('#oMom').value,
+    valor_total_pdf:tot,valor_provavel:$('#oProv').value?Number($('#oProv').value):tot,quente:$('#oQuente').checked},null,null);
+};}
+
+async function lerPDF(file){
+  const box=$('#orcRev'); box.innerHTML='<p class="mut">Lendo o PDF…</p>';
+  try{
+    const pdfjs=await carregarPdfjs();
+    const r=await lerOrcamentoPDF(pdfjs,new Uint8Array(await file.arrayBuffer()));
+    sugerirOpcoes(r.itens); ORC_NOVO={...r,file};
+    const {data:ex}=await sb.from('orcamentos').select('id,versao').eq('capa_id',CAPA.c.id).eq('numero_santri',r.cabecalho.numero);
+    ORC_NOVO.existentes=ex||[];
+    renderRevisao();
+  }catch(e){ box.innerHTML=`<div class="erro">${esc(e.message)}</div>`; }
+}
+function blocoItens(itens, prefixo){
+  // agrupa por ambiente
+  const ambs=[...new Set(itens.map(i=>i.ambiente||'(sem ambiente)'))];
+  return ambs.map(a=>{
+    const L=itens.filter(i=>(i.ambiente||'(sem ambiente)')===a);
+    const grupos=[...new Set(L.filter(i=>i.grupo_opcao!=null).map(i=>i.grupo_opcao))];
+    return `<div style="margin-top:10px"><b style="color:var(--navy)">${esc(a)}</b>
+      ${grupos.map(g=>{const G=L.filter(i=>i.grupo_opcao===g);const conf=G[0].opcao_confirmada;
+        return `<div class="item" style="border-color:${conf?'var(--gold)':'#aab4c0'};background:${conf?'#fffaf0':'#f7f9fc'}">
+          <div class="mut" style="margin-bottom:6px">${conf?'<b style="color:#8a5200">Opções — o cliente leva só uma.</b> Marque a mais provável:':`<b>Parecem opções entre si</b> (mesma quantidade: ${G[0].quantidade} ${esc(G[0].unidade||'')}). São opções?`}</div>
+          ${G.map(i=>`<label style="display:flex;gap:8px;align-items:center;margin:4px 0;color:var(--txt)">
+            ${conf?`<input type="radio" name="${prefixo}g${g}" data-esc="${i.ordem}" ${i.escolhido?'checked':''} style="width:auto">`:''}
+            <span style="flex:1">${esc(i.descricao)} <span class="mut">${esc(i.marca||'')}</span></span><b>${brl(i.total)}</b><button class="link" title="Este item não é opção dos outros" data-sair="${i.ordem}">tirar</button></label>`).join('')}
+          <div class="linha" style="margin-top:6px">${conf?`<button class="link" data-conf="${g}" data-v="0">Não são opções (leva todos)</button>`:`<button class="sec" data-conf="${g}" data-v="1">Sim, são opções</button><button class="link" data-conf="${g}" data-v="0">Não, leva todos</button>`}</div>
+        </div>`}).join('')}
+      ${L.filter(i=>i.grupo_opcao==null).map(i=>`<div class="linha" style="justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd)"><span>${esc(i.descricao)} <span class="mut">${esc(i.marca||'')} · ${i.quantidade} ${esc(i.unidade||'')}</span></span><b>${brl(i.total)}</b></div>`).join('')}
+    </div>`}).join('');
+}
+function ligarBlocoItens(root, itens, rerender){
+  root.querySelectorAll('[data-esc]').forEach(r=>r.onchange=()=>{const it=itens.find(i=>i.ordem==r.dataset.esc);itens.filter(i=>i.grupo_opcao===it.grupo_opcao).forEach(i=>i.escolhido=(i===it));rerender();});
+  root.querySelectorAll('[data-sair]').forEach(b=>b.onclick=e=>{e.preventDefault();const it=itens.find(i=>i.ordem==b.dataset.sair);const g=it.grupo_opcao;
+    it.grupo_opcao=null;it.opcao_confirmada=false;it.escolhido=true;const R=itens.filter(i=>i.grupo_opcao===g);
+    if(R.length<2) R.forEach(i=>{i.grupo_opcao=null;i.opcao_confirmada=false;i.escolhido=true;}); else if(!R.some(i=>i.escolhido)){const m=R.reduce((a,c)=>c.total<a.total?c:a);m.escolhido=true;}
+    rerender();});
+  root.querySelectorAll('[data-conf]').forEach(b=>b.onclick=()=>{const g=+b.dataset.conf;const G=itens.filter(i=>i.grupo_opcao===g);
+    if(b.dataset.v==='1'){G.forEach(i=>i.opcao_confirmada=true);} else {G.forEach(i=>{i.opcao_confirmada=false;i.grupo_opcao=null;i.escolhido=true;});}
+    rerender();});
+}
+function renderRevisao(){
+  const r=ORC_NOVO, c=r.cabecalho, it=r.itens;
+  const pend=[...new Set(it.filter(i=>i.grupo_opcao!=null&&!i.opcao_confirmada).map(i=>i.grupo_opcao))].length;
+  const prov=valorProvavel(it);
+  $('#orcRev').innerHTML=`<div class="card" style="margin-top:12px;border-color:var(--navy2)">
+    <div class="linha" style="justify-content:space-between"><b>Orçamento ${esc(c.numero)} · ${esc(c.cliente||'')}</b><span class="mut">${esc(c.vendedor||'')}</span></div>
+    <div class="mut">${dBR(c.data_emissao)} · validade ${dBR(c.data_validade)} · ${esc(c.condicao_pagamento||'')} · ${it.length} itens</div>
+    ${r.existentes.length?`<div class="aviso">Esta capa já tem o orçamento ${esc(c.numero)} (${r.existentes.length} versão(ões)). Informe a versão nova — a anterior será marcada como "Substituído".</div>`:''}
+    <div class="kpis" style="margin:10px 0"><div class="kpi"><b>${brl(r.total_geral)}</b><span>total do PDF</span></div><div class="kpi"><b>${brl(prov)}</b><span>valor provável</span></div>
+      ${pend?`<div class="kpi"><b class="atras">${pend}</b><span>sugestões para confirmar</span></div>`:''}</div>
+    <div class="g3"><div><label>Momento *</label>${sel('momento','','id="rMom"')}</div><div><label>Versão</label><input id="rVer" value="${String(r.existentes.length+1).padStart(2,'0')}"></div>
+      <div><label>Quente?</label><select id="rQuente"><option value="false">Não</option><option value="true">Sim</option></select></div></div>
+    <div id="rItens">${blocoItens(it,'n')}</div>
+    <div class="linha" style="margin-top:12px"><button class="gold" id="rSalvar">Salvar orçamento</button><button class="sec" id="rCanc">Cancelar</button></div></div>`;
+  ligarBlocoItens($('#orcRev'),it,renderRevisao);
+  if(ORC_NOVO._mom) $('#rMom').value=ORC_NOVO._mom; $('#rMom').onchange=e=>ORC_NOVO._mom=e.target.value;
+  $('#rCanc').onclick=()=>{ORC_NOVO=null;$('#orcRev').innerHTML='';};
+  $('#rSalvar').onclick=async()=>{
+    if(!$('#rMom').value) return toast('Escolha o momento (base, revestimento, louças e metais)');
+    $('#rSalvar').disabled=true;
+    let path=null;
+    const up=`${CAPA.c.id}/${Date.now()}_orc_${(c.numero||'').replace(/\D/g,'')}.pdf`;
+    const {error:eUp}=await sb.storage.from('capas').upload(up,r.file,{contentType:'application/pdf'}); if(!eUp) path=up;
+    const ok=await salvarOrcamento({numero_santri:c.numero,versao:$('#rVer').value||null,data_emissao:c.data_emissao,data_validade:c.data_validade,vendedor_santri:c.vendedor,
+      condicao_pagamento:c.condicao_pagamento,cliente_pdf:c.cliente,momento:$('#rMom').value,valor_total_pdf:r.total_geral,valor_provavel:Math.round(valorProvavel(it)*100)/100,
+      quente:$('#rQuente').value==='true',pdf_path:path,lido_do_pdf:true}, it, r.existentes);
+    if(!ok) $('#rSalvar').disabled=false; else ORC_NOVO=null;
   };
+}
+async function salvarOrcamento(reg, itens, existentes){
+  reg.capa_id=CAPA.c.id; reg.criado_por=EU.id;
+  if(existentes&&existentes.length){ await sb.from('orcamentos').update({status:'Substituído (nova versão)',quente:false}).in('id',existentes.map(e=>e.id)); }
+  const {data:o,error}=await sb.from('orcamentos').insert(reg).select().single();
+  if(error){ erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Salve como "não quente" ou desmarque o outro.'}:error); return false; }
+  if(itens&&itens.length){
+    const ids=[...new Set(itens.map(i=>i.produto_id).filter(Boolean))];
+    const {data:exist}=ids.length?await sb.from('produtos').select('id').in('id',ids):{data:[]};
+    const ok=new Set((exist||[]).map(x=>x.id));
+    const rows=itens.map(i=>({orcamento_id:o.id,ordem:i.ordem,ambiente:i.ambiente,ambiente_com_opcoes:/OP[ÇC]/i.test(i.ambiente||''),produto_id:ok.has(i.produto_id)?i.produto_id:null,
+      codigo_original:i.codigo_original,descricao:i.descricao,marca:i.marca,unidade:i.unidade,quantidade:i.quantidade,preco_unitario:i.preco_unitario,total:i.total,
+      escolhido:i.escolhido!==false,grupo_opcao:i.grupo_opcao,opcao_confirmada:!!i.opcao_confirmada,sob_encomenda:!!i.sob_encomenda}));
+    const {error:e2}=await sb.from('orcamento_itens').insert(rows); if(e2) erro(e2);
+  }
+  if(CAPA.c.status==='Aberta'){await sb.from('capas').update({status:'Em orçamento'}).eq('id',CAPA.c.id);CAPA.c.status='Em orçamento';}
+  await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Orçamento enviado',
+    resumo:`Orçamento ${reg.numero_santri||''} (${reg.momento}) — PDF ${brl(reg.valor_total_pdf)}, provável ${brl(reg.valor_provavel)}`});
+  toast('Orçamento salvo'); abaOrc(); atualizarResumo(); return true;
+}
+async function editarItensSalvos(oid){
+  const box=$('#itens_'+oid); if(box.innerHTML){box.innerHTML='';return;}
+  const {data:its}=await sb.from('orcamento_itens').select('*').eq('orcamento_id',oid).order('ordem');
+  const itens=its.map(i=>({...i,total:Number(i.total),quantidade:Number(i.quantidade)}));
+  const render=()=>{ box.innerHTML=`<div style="margin-top:8px">${blocoItens(itens,'s'+oid)}</div>
+    <div class="linha" style="margin-top:8px"><b>Provável: ${brl(valorProvavel(itens))}</b>${CAPA.podeEditar?`<button class="gold" id="sv_${oid}">Salvar escolhas</button>`:''}</div>`;
+    if(CAPA.podeEditar){ ligarBlocoItens(box,itens,render);
+      $('#sv_'+oid).onclick=async()=>{
+        for(const i of itens){ await sb.from('orcamento_itens').update({escolhido:i.escolhido,grupo_opcao:i.grupo_opcao,opcao_confirmada:i.opcao_confirmada}).eq('id',i.id); }
+        const {error}=await sb.from('orcamentos').update({valor_provavel:Math.round(valorProvavel(itens)*100)/100}).eq('id',oid); if(error) return erro(error);
+        toast('Salvo ✓'); abaOrc(); atualizarResumo(); };
+    } else box.querySelectorAll('input,button').forEach(x=>x.disabled=true);
+  };
+  render();
 }
 
 // ---------- Linha do tempo ----------
