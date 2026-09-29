@@ -20,6 +20,7 @@ button{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:10px
 button.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}button.gold{background:var(--gold);color:#1d2733}
 button:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.legenda{margin-top:8px;padding:10px 12px;background:#fffaf0;border-left:4px solid var(--gold);border-radius:6px;font-size:13px;line-height:1.6}.legenda code{background:#1F3A5F;color:#fff;padding:1px 6px;border-radius:4px;font-weight:bold}
 .drop{border:2px dashed #aab4c0;border-radius:10px;padding:30px;text-align:center;color:var(--mut);cursor:pointer}
 .drop.on{border-color:var(--gold);background:#fffaf0}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -54,7 +55,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <h2>1. Escolha o relatório</h2>
     <label>Tipo de arquivo</label>
     <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option></select>
-    <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select></div>
+    <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="">— escolha —</option><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select>
+      <div class="legenda"><b>Como identificar a loja:</b> antes de importar, renomeie o arquivo colocando a sigla da loja no começo do nome:<br>
+      <code>PVA_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Primavera do Leste<br>
+      <code>RV_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Rio Verde<br>
+      <small>O sistema escolhe a loja sozinho pelo nome. Sem a sigla, ele não deixa importar até você escolher a loja acima. Cada loja tem seus preços: importe os dois arquivos.</small></div></div>
     <p class="mut">Próximos tipos: Vendas, Compras, Entradas, Contas a pagar/receber.</p>
     <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
@@ -172,9 +177,10 @@ let arquivoNome='';
 
 const TIPO=()=>$('tipo').value;
 const STG=()=>TIPO()==='precos'?'precos_staging':'produtos_staging';
+$('lojaImp').onchange=()=>resetPassos();
 $('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); resetPassos(); };
 async function lerArquivo(f){
-  if(/^RV[_ ]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ ]/i.test(f.name)) $('lojaImp').value='1';
+  if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(TIPO()==='precos') $('lojaImp').value='';
   resetPassos(); arquivoNome=f.name;
   drop.innerHTML=`Lendo <b>${f.name}</b>…`;
   let rows;
@@ -231,6 +237,11 @@ function conferirColunas(){
     };
     return;
   }
+  if(TIPO()==='precos'){
+    const lj=$('lojaImp').value;
+    if(!lj){ msg('colMsgs','<b>De qual loja é este arquivo?</b> O nome não começa com PVA_ ou RV_. Escolha a loja no passo 1 (ou renomeie o arquivo) e arraste de novo.','err'); return; }
+    msg('colMsgs',`Loja deste arquivo: <b>${lj==='1'?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Se estiver errado, troque no passo 1 e arraste o arquivo de novo.`,'warn');
+  }
   enviarStaging();
 }
 
@@ -243,7 +254,7 @@ function montarRegistro(r){
   const g=c=>mapa[c]!==undefined?r[mapa[c]]:'';
   if(TIPO()==='precos'){ const pid=numBR(String(g('produto_id')).replace(/\./g,''));
     return {loja_id:+$('lojaImp').value, produto_id:pid, preco_tabela_fabrica:numBR(g('preco_tabela_fabrica')), pct_ipi:numBR(g('pct_ipi')), pct_st:numBR(g('pct_st')), tipo_st:txt(g('tipo_st')),
-      pct_icms:numBR(g('pct_icms')), vlr_frete_un:numBR(g('vlr_frete_un')), custo_comercial:numBR(g('custo_comercial')), preco_venda:numBR(g('preco_venda')), data_preco:dataBR(g('data_preco'))}; }
+      pct_icms:numBR(g('pct_icms')), vlr_frete_un:numBR(g('vlr_frete_un')), custo_comercial:numBR(g('custo_comercial')), preco_venda:numBR(g('preco_venda')), data_preco:dataBR(g('data_preco')), pct_outras:numBR(g('pct_outras')), pct_credito_ipi:numBR(g('pct_credito_ipi'))}; }
   const id=numBR(String(g('id')).replace(/\./g,''));
   return {id, nome:txt(g('nome')), marca:txt(g('marca')), unidade:txt(g('unidade')),
     m2_caixa:numBR(g('m2_caixa')), peso_caixa_kg:numBR(g('peso_caixa_kg')), peso_unidade_kg:numBR(g('peso_unidade_kg')),

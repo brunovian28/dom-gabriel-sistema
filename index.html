@@ -149,7 +149,7 @@ async function telaLista(){
   <div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Capas de atendimento</h2><button class="gold" onclick="location.hash='#/nova'">+ Nova capa</button></div>
   <div class="card"><div class="g3">
     <div><label>Buscar (nome, WhatsApp, endereço, nº)</label><input id="fBusca" value="${esc(filtro.busca)}" placeholder="ex.: Juliana, 66999…, Rua…"></div>
-    <div><label>Mostrar</label><select id="fEscopo"><option value="minhas">Minhas capas</option><option value="loja">Todas da loja</option>${ehDirecao()?'<option value="todas">Todas as lojas</option>':''}</select></div>
+    <div><label>Mostrar</label><select id="fEscopo"><option value="minhas">Minhas capas</option><option value="loja">Todas da loja</option>${ehDirecao()?'<option value="todas">Todas as lojas</option>'+LOJAS.map(l=>`<option value="l${l.id}">Só ${esc(l.codigo)} – ${esc(l.nome)}</option>`).join(''):''}</select></div>
     <div><label>Status</label><select id="fStatus"><option value="abertas">Em andamento</option><option value="todas">Todos</option>${(OP.status_capa||[]).map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
   </div></div>
   <div id="kpis" class="kpis" style="margin-bottom:12px"></div>
@@ -164,6 +164,7 @@ async function carregarLista(){
   let q=sb.from('vw_capas_lista').select('*').order('proximo_passo_data',{ascending:true,nullsFirst:false}).limit(300);
   if(filtro.escopo==='minhas') q=q.eq('vendedor_id',EU.id);
   else if(filtro.escopo==='loja') q=q.eq('loja_id',EU.loja_id);
+  else if(/^l\d+$/.test(filtro.escopo)) q=q.eq('loja_id',+filtro.escopo.slice(1));
   if(filtro.status==='abertas') q=q.in('status',['Aberta','Em orçamento']);
   else if(filtro.status!=='todas') q=q.eq('status',filtro.status);
   const b=filtro.busca.trim().toLowerCase(); if(b) q=q.ilike('busca','%'+b.replace(/[%_]/g,'')+'%');
