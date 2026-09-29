@@ -126,7 +126,7 @@ sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
 function montarMenu(){
-  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/conferencia-st','Conferência de ST']);
+  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
@@ -140,6 +140,7 @@ function rota(){
   if(h==='#/parametros') return telaParametros();
   if(h==='#/conferencia-st') return telaConfST();
   if(h==='#/profissionais') return telaProfissionais();
+  if(h==='#/condicoes') return telaCondicoes();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -227,7 +228,7 @@ async function abrirCapa(id){
      </div>
      <div id="perdaBox" class="${c.status==='Perdida'?'':'hide'}"><label>Motivo da perda</label>${sel('motivo_perda',c.motivo_perda,`data-t="capas" data-f="motivo_perda" ${dis}`)}</div>
    </div>
-   <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['negoc','Negociação'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
+   <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['negoc','Negociação'],['ped','Pedido'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
    <div id="aba"></div>`;
   document.querySelectorAll('.tabs a').forEach(a=>a.onclick=e=>{e.preventDefault();abaAtual=a.dataset.aba;document.querySelectorAll('.tabs a').forEach(x=>x.classList.toggle('on',x===a));renderAba();});
   ligarCampos($('#conteudo')); atualizarResumo(); renderAba();
@@ -251,7 +252,7 @@ async function atualizarResumo(){
   $('#resumo').innerHTML=`<span class="pill ${r.temperatura}" title="BANT: B${r.bant_b} A${r.bant_a} N${r.bant_n} T${r.bant_t}">${r.temperatura} · ${r.pontos}/4</span>
    ${r.valor_em_negociacao>0?` <b style="margin-left:8px">${brl(r.valor_em_negociacao)}</b> <span class="mut">em negociação</span>`:''}`;
 }
-function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:abaCheck,orc:abaOrc,negoc:abaNegoc,tempo:abaTempo})[abaAtual](); }
+function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:abaCheck,orc:abaOrc,negoc:abaNegoc,ped:abaPed,tempo:abaTempo})[abaAtual](); }
 
 // ---------- Quem e onde ----------
 async function abaQuem(){
@@ -460,8 +461,14 @@ async function lerOrcamentoPDF(pdfjsLib, data){
   const cab={
     numero: pega(/Orçamento:\s*([\d.]+)/), data_emissao: dt(pega(/Data emissão:\s*([\d\/]+)/)), data_validade: dt(pega(/Data de validade:\s*([\d\/]+)/)),
     vendedor: pega(/Vendedor:\s*(.+?)(?:\s+Fone|\n|$)/), condicao_pagamento: pega(/Condição de pagamento:\s*(.+)/),
-    cliente: pega(/Cliente:\s*(.+?)(?:\s+A\/C:|\n|$)/), loja: pega(/DOM GABRIEL[^\n]*?-\s*(PVA|RV)/)
+    cliente: pega(/Cliente:\s*(.+?)(?:\s+A\/C:|\n|$)/), loja: pega(/DOM GABRIEL[^\n]*?-\s*(PVA|RV)/),
+    eh_pedido: /Data de fechamento:/.test(todo), data_fechamento: dt(pega(/Data de fechamento:\s*([\d\/]+)/)), observacao: pega(/Observação:\s*(.+)/)
   };
+  cab.cliente_codigo=(cab.cliente||'').match(/^([\d.]+)\s*-/)?.[1]?.replace(/\./g,'')||null;
+  // quadro TOTAIS (pedido): Total produtos | Serviços adicionais | Valor desconto | Total pedido
+  const totais={}; { const L=linhas.map(txt); const ih=L.findIndex(x=>/Total produtos/.test(x)&&/Serviços adicionais/.test(x));
+    if(ih>=0){ const labs=['Total produtos','Serviços adicionais','Valor desconto','Total pedido'].filter(k=>L[ih].includes(k));
+      const vals=(L[ih+1]||'').match(/[\d.]+,\d{2}/g)||[]; labs.forEach((k,j)=>{ if(vals[j]!=null) totais[k]=num(vals[j]); }); } }
   // colunas pelo cabeçalho da tabela
   const hl=linhas.find(l=>/Cod\. original/.test(txt(l)) && /Total/.test(txt(l)));
   if(!hl) throw new Error('Não encontrei a tabela de produtos neste PDF. É um orçamento do Santri?');
@@ -495,7 +502,7 @@ async function lerOrcamentoPDF(pdfjsLib, data){
   const tg=todo.match(/TOTAL GERAL[\s\S]*?([\d.]+,\d{2})\s*$/m); 
   const totalLinhas=linhas.map(txt); let totalGeral=null;
   const iTG=totalLinhas.findIndex(s=>/TOTAL GERAL/.test(s)); if(iTG>=0){ for(let k=iTG;k<Math.min(iTG+3,totalLinhas.length);k++){ const m=totalLinhas[k].match(/([\d.]+,\d{2})\s*$/); if(m){totalGeral=num(m[1]);} } }
-  return {cabecalho:cab,itens,total_geral:totalGeral ?? itens.reduce((s,i)=>s+i.total,0)};
+  return {cabecalho:cab,itens,totais,total_geral:totalGeral ?? itens.reduce((s,i)=>s+i.total,0)};
 }
 // sugere grupos de opções: mesmo ambiente + mesma unidade + mesma quantidade
 function sugerirOpcoes(itens){
@@ -708,9 +715,9 @@ async function abaNegoc(){
   <div class="card" id="ngRes"></div>
   <div class="card" id="ngJC"></div>
   <div class="card"><div class="linha">
-    ${CAPA.podeEditar?`<button class="gold" id="ngSalvar">Salvar negociação</button><button class="sec" id="ngFechar">Marcar como FECHADA</button>`:''}
+    ${CAPA.podeEditar?`<button class="gold" id="ngSalvar">Salvar negociação</button>`:''}
     <button class="sec" id="ngProp">Proposta para o cliente</button></div><div id="ngMsg"></div>
-    <p class="mut" style="margin-top:8px"><b>Salvar negociação</b>: guarda esta simulação na capa para abrir e continuar depois (não conta no mês). <b>Marcar como FECHADA</b>: o cliente fechou nessas condições — passa a contar na margem do mês da loja e fica registrada na linha do tempo. <b>Proposta</b>: versão para o cliente, sem custos nem margem.</p></div>
+    <p class="mut" style="margin-top:8px"><b>Salvar negociação</b>: guarda esta simulação na capa para abrir e continuar depois. <b>Proposta</b>: versão para o cliente, sem custos nem margem. <b>Fechou?</b> Lance o pedido no Santri e suba o PDF na aba <b>Pedido</b> — é o pedido que conta na margem do mês.</p></div>
   ${listaNegs()}`;
   const pars=(await sb.from('parametros_loja').select('taxa_juros_cliente_am').eq('loja_id',CAPA.c.loja_id).maybeSingle()).data;
   $('#ngJuros').value=pars?((pars.taxa_juros_cliente_am*100).toFixed(2)):'2.99';
@@ -721,7 +728,7 @@ async function abaNegoc(){
   $('#ngModo').onchange=()=>{$('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');recalc();};
   ['ngDesc','ngFreteCli','ngEnt','ngMod','ngJuros','ngArq','ngGoy'].forEach(i=>{$('#'+i).addEventListener('change',recalc);$('#'+i).addEventListener('input',()=>{clearTimeout(_negT);_negT=setTimeout(recalc,400)});});
   $('#ngOrc').onchange=carregarItensNeg;
-  if($('#ngSalvar')){ $('#ngSalvar').onclick=()=>salvarNeg('Rascunho'); $('#ngFechar').onclick=()=>{if(confirm('Marcar esta negociação como FECHADA? Ela passa a contar na MC do mês.'))salvarNeg('Fechada');}; }
+  if($('#ngSalvar')){ $('#ngSalvar').onclick=()=>salvarNeg('Rascunho'); }
   $('#ngProp').onclick=proposta;
   document.querySelectorAll('[data-abrneg]').forEach(b=>b.onclick=()=>abrirNeg(b.dataset.abrneg));
   await carregarItensNeg();
@@ -786,7 +793,7 @@ async function recalc(){
       ${lin('Comissão vendedor',r.comissao)}${lin('RT arquiteto',r.rt)}${lin('Goyases / Metropolitano',r.goyases)}${lin('Cartão ('+pct(r.taxa_cartao)+')',r.custo_financeiro)}
       <tr><td><b>Margem de contribuição</b></td><td style="text-align:right"><b>${brl(r.mc)}</b></td><td style="text-align:right"><b>${pct(r.mc_pct)}</b></td></tr></table>
     ${(r.avisos||[]).map(a=>`<div class="aviso">${esc(a)}</div>`).join('')}
-    <div class="item" style="margin-top:10px"><b>Mês da loja:</b> MC fechada ${brl(fech)} de ${brl(pe)} do ponto de equilíbrio
+    <div class="item" style="margin-top:10px"><b>Mês da loja:</b> margem dos pedidos do mês ${brl(fech)} de ${brl(pe)} do ponto de equilíbrio
       <div style="height:8px;background:#e6e9ee;border-radius:4px;margin:6px 0"><div style="height:8px;border-radius:4px;background:var(--gold);width:${pe?Math.min(100,fech/pe*100):0}%"></div></div>
       <span class="mut">Faltam ${brl(falta)}. Esta venda cobre ${pe?pct(Math.max(r.mc,0)/Math.max(falta,1)).replace('-','0'):'-'} do que falta.</span></div>`;
   // comparação juros do cliente
@@ -868,6 +875,166 @@ async function telaParametros(){
     if(!confirm(`Substituir todas as taxas por ${regs.length} linhas?`)) return;
     const {error:e1}=await sb.from('taxas_cartao').update({ativo:false}).eq('ativo',true); if(e1) return erro(e1);
     const {error:e2}=await sb.from('taxas_cartao').insert(regs); if(e2) return erro(e2); toast(regs.length+' taxas cadastradas'); telaParametros(); };
+}
+
+// ---------- Pedido (PDF do pedido do Santri = a venda de verdade) ----------
+let PED=null;
+const normCond=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+async function abaPed(){
+  const [{data:peds},{data:conds},{data:tx},{data:orcs},{data:arq}]=await Promise.all([
+    sb.from('pedidos').select('*').eq('capa_id',CAPA.c.id).order('data_fechamento',{ascending:false}),
+    sb.from('condicoes_pagamento').select('*').eq('ativo',true).order('nome'),
+    sb.from('taxas_cartao').select('bandeira,modalidade').eq('ativo',true).order('id'),
+    sb.from('orcamentos').select('id,numero_santri,versao,status').eq('capa_id',CAPA.c.id),
+    sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id).eq('papel','Arquiteto / designer')]);
+  PED={peds:peds||[],conds:conds||[],tx:tx||[],orcs:orcs||[],temArq:(arq||[]).length>0||!!CAPA.ob.escritorio_id,novo:null};
+  $('#aba').innerHTML=`
+   ${CAPA.podeEditar?`<div class="card"><h3>Subir pedido do Santri</h3>
+     <p class="mut" style="margin-top:-4px">Quando o cliente fechar, lance o pedido no Santri e suba o PDF aqui. O sistema liga o pedido ao orçamento de mesmo número, calcula a margem real e marca a capa como ganha.</p>
+     <div id="pedDrop" class="drop" style="border:2px dashed #aab4c0;border-radius:10px;padding:24px;text-align:center;cursor:pointer;color:var(--mut)">Arraste o PDF do pedido aqui ou clique para escolher</div>
+     <input type="file" id="pedFile" accept="application/pdf" class="hide"><div id="pedRev"></div></div>`:''}
+   <div class="card"><h3>Pedidos desta capa</h3>${listaPeds()}</div>`;
+  if(CAPA.podeEditar){ const d=$('#pedDrop'); d.onclick=()=>$('#pedFile').click();
+    d.ondragover=e=>{e.preventDefault();d.style.borderColor='var(--gold)'}; d.ondragleave=()=>d.style.borderColor='#aab4c0';
+    d.ondrop=e=>{e.preventDefault();d.style.borderColor='#aab4c0';if(e.dataTransfer.files[0])lerPedido(e.dataTransfer.files[0])};
+    $('#pedFile').onchange=e=>{if(e.target.files[0])lerPedido(e.target.files[0])}; }
+  ligarListaPeds();
+}
+function listaPeds(){
+  if(!PED.peds.length) return '<p class="mut">Nenhum pedido ainda.</p>';
+  return `<div class="tbl"><table><tr><th>Pedido</th><th>Fechamento</th><th>Condição</th><th style="text-align:right">Total</th><th style="text-align:right">Margem de contribuição</th><th>Situação</th><th></th></tr>
+  ${PED.peds.map(p=>{const r=p.resultado||{};return `<tr style="${p.status==='Cancelado'?'opacity:.5':''}"><td><b>${esc(p.numero_santri)}</b>${p.orcamento_id?'':' <span class="mut">(sem orçamento)</span>'}</td><td>${dBR(p.data_fechamento)}</td>
+    <td>${esc(p.condicao_texto||'')}${p.bandeira&&p.bandeira!=='Boleto'?' <span class="mut">· '+esc(p.bandeira)+'</span>':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td>
+    <td style="text-align:right"><b>${brl(r.mc)}</b> <span class="mut">${pct(r.mc_pct)}</span></td><td>${esc(p.status)}</td>
+    <td style="white-space:nowrap">${p.arquivo_path?`<button class="link" data-ppdf="${esc(p.arquivo_path)}">PDF</button>`:''} <button class="link" data-pver="${p.id}">itens</button>
+      ${ehDirecao()&&p.status!=='Cancelado'?`<button class="link" style="color:#b33" data-pcanc="${p.id}">cancelar</button>`:''}</td></tr>
+    <tr class="hide" id="pit_${p.id}"><td colspan="7"></td></tr>`}).join('')}</table></div>`;
+}
+function ligarListaPeds(){
+  document.querySelectorAll('[data-ppdf]').forEach(b=>b.onclick=async()=>{const {data,error}=await sb.storage.from('capas').createSignedUrl(b.dataset.ppdf,600);if(error)return erro(error);window.open(data.signedUrl,'_blank');});
+  document.querySelectorAll('[data-pcanc]').forEach(b=>b.onclick=async()=>{if(!confirm('Cancelar este pedido? Ele sai da margem do mês.'))return;
+    const {error}=await sb.from('pedidos').update({status:'Cancelado'}).eq('id',b.dataset.pcanc); if(error) return erro(error); toast('Pedido cancelado'); abaPed();});
+  document.querySelectorAll('[data-pver]').forEach(b=>b.onclick=async()=>{const tr=$('#pit_'+b.dataset.pver); if(!tr.classList.contains('hide')){tr.classList.add('hide');return;}
+    const p=PED.peds.find(x=>x.id===b.dataset.pver); const {data:its}=await sb.from('pedido_itens').select('*').eq('pedido_id',p.id).order('ordem'); const by={}; (p.resultado?.itens||[]).forEach(x=>by[x.ref]=x);
+    tr.firstElementChild.innerHTML=`<table><tr><th>Ambiente</th><th>Produto</th><th>Qtd</th><th style="text-align:right">Preço un.</th><th style="text-align:right">Total</th><th style="text-align:right">MC</th><th style="text-align:right">MC %</th></tr>${its.map(i=>{const x=by[i.ordem]||{};return `<tr><td class="mut">${esc(i.ambiente||'')}</td><td>${esc(i.descricao)}</td><td>${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade||'')}</td><td style="text-align:right">${brl(i.preco_unitario)}</td><td style="text-align:right">${brl(i.total)}</td><td style="text-align:right">${brl(x.mc)}</td><td style="text-align:right">${x.mc!=null&&i.total?pct(x.mc/i.total):''}</td></tr>`}).join('')}</table>`;
+    tr.classList.remove('hide');});
+}
+async function lerPedido(file){
+  $('#pedRev').innerHTML='<p class="mut">Lendo o PDF…</p>';
+  let r; try{ const pdfjs=await carregarPdfjs(); r=await lerOrcamentoPDF(pdfjs,new Uint8Array(await file.arrayBuffer())); }catch(e){ $('#pedRev').innerHTML=`<div class="aviso">${esc(e.message)}</div>`; return; }
+  const c=r.cabecalho;
+  if(!c.eh_pedido){ $('#pedRev').innerHTML='<div class="aviso">Este PDF parece ser um <b>orçamento</b>, não um pedido (não tem "Data de fechamento"). Orçamentos vão na aba Orçamentos.</div>'; return; }
+  const lojaCod=LOJAS.find(l=>l.id===CAPA.c.loja_id)?.codigo;
+  const avisos=[];
+  if(c.loja&&lojaCod&&c.loja!==lojaCod) avisos.push(`O pedido é da loja <b>${esc(c.loja)}</b> e a capa é da loja <b>${esc(lojaCod)}</b>.`);
+  const {data:dup}=await sb.from('pedidos').select('id,capa_id').eq('loja_id',CAPA.c.loja_id).eq('numero_santri',c.numero).neq('status','Cancelado');
+  if(dup&&dup.length){ $('#pedRev').innerHTML=`<div class="aviso">O pedido ${esc(c.numero)} já foi lançado${dup[0].capa_id===CAPA.c.id?' nesta capa':' em outra capa'}.</div>`; return; }
+  const orc=PED.orcs.filter(o=>o.numero_santri===c.numero).sort((a,b)=>(a.status==='Substituído (nova versão)')-(b.status==='Substituído (nova versão)'))[0]||null;
+  if(!orc) avisos.push(`Não achei nesta capa o orçamento nº ${esc(c.numero)}. O pedido fica ligado só à capa (confira se é a capa certa).`);
+  const cond=PED.conds.find(x=>normCond(x.nome)===normCond(c.condicao_pagamento))||null;
+  if(!cond) avisos.push(`A condição "${esc(c.condicao_pagamento||'')}" não está no cadastro de condições. Escolha a mais parecida abaixo.`);
+  PED.novo={file,r,orc,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
+  const bands=[...new Set(PED.tx.map(t=>t.bandeira))];
+  const tot=r.totais||{};
+  $('#pedRev').innerHTML=`<div style="margin-top:12px">
+    ${avisos.map(a=>`<div class="aviso">${a}</div>`).join('')}
+    <div class="kpis"><div class="kpi"><b>${esc(c.numero)}</b><span>pedido${orc?' · orçamento ligado':''}</span></div><div class="kpi"><b>${dBR(c.data_fechamento)}</b><span>fechamento</span></div>
+      <div class="kpi"><b>${brl(r.total_geral)}</b><span>total do pedido${tot['Valor desconto']?' (desconto '+brl(tot['Valor desconto'])+')':''}</span></div><div class="kpi"><b>${r.itens.length}</b><span>itens</span></div></div>
+    <p class="mut">Cliente: ${esc(c.cliente||'')} · Vendedor Santri: ${esc(c.vendedor||'')}${c.observacao?' · Obs.: '+esc(c.observacao):''}</p>
+    <div class="g3"><div><label>Condição de pagamento (Santri)</label><select id="pCond"><option value="">—</option>${PED.conds.map(x=>`<option value="${x.codigo}" ${cond&&cond.codigo===x.codigo?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></div>
+      <div id="pBandBox"><label>Bandeira / tabela</label><select id="pBand"><option value="">—</option>${bands.map(b=>`<option>${esc(b)}</option>`).join('')}</select></div>
+      <div id="pModBox"><label>Modalidade</label><select id="pMod"></select></div>
+      <div id="pEntBox"><label>Entrada (R$)</label><input id="pEnt" inputmode="decimal" value="0"></div>
+      <div id="pTxBox"><label>Custo financeiro (% do valor a prazo)</label><input id="pTx" inputmode="decimal" placeholder="ex.: 2,5"></div>
+      <div style="align-self:end"><label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pArq" style="width:auto" ${PED.temArq?'checked':''}> Tem arquiteto (RT)</label>
+        <label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pGoy" style="width:auto" ${PED.temArq?'checked':''}> Goyases / Metropolitano</label></div></div>
+    <div id="pCondObs"></div><div id="pRes" style="margin-top:10px"></div>
+    <div class="linha" style="margin-top:10px"><button class="gold" id="pSalvar">Confirmar pedido</button><button class="sec" id="pCanc">Cancelar</button></div></div>`;
+  const pn=v=>{v=String(v||'').trim(); if(!v) return null; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); const n=Number(v.replace('%','')); return isNaN(n)?null:n;};
+  const preencherMod=(sel)=>{const b=$('#pBand').value; const ms=PED.tx.filter(t=>t.bandeira===b).map(t=>t.modalidade); $('#pMod').innerHTML=ms.map(m=>`<option ${m===sel?'selected':''}>${esc(m)}</option>`).join('');};
+  const aplicarCond=()=>{ const cd=PED.conds.find(x=>String(x.codigo)===$('#pCond').value);
+    const usaTab=cd&&cd.bandeira; $('#pBand').value=usaTab?cd.bandeira:(cd&&cd.forma==='avista'?'':$('#pBand').value); preencherMod(cd?.modalidade);
+    $('#pEntBox').classList.toggle('hide',!(cd&&cd.tem_entrada));
+    $('#pTxBox').classList.toggle('hide',!!(cd&&(cd.bandeira||cd.forma==='avista')));
+    if(cd&&cd.taxa_manual!=null) $('#pTx').value=String(cd.taxa_manual*100).replace('.',',');
+    $('#pCondObs').innerHTML=cd?.observacao?`<p class="mut">${esc(cd.observacao)}${cd.conferido?'':' <b>(a direção ainda não conferiu esta condição)</b>'}</p>`:''; recalcPed(); };
+  $('#pCond').onchange=aplicarCond; $('#pBand').onchange=()=>{preencherMod();recalcPed();};
+  ['pMod','pArq','pGoy'].forEach(i=>$('#'+i).onchange=recalcPed); ['pEnt','pTx'].forEach(i=>$('#'+i).onchange=recalcPed);
+  $('#pCanc').onclick=()=>{PED.novo=null;$('#pedRev').innerHTML='';};
+  $('#pSalvar').onclick=salvarPedido;
+  PED.pn=pn; aplicarCond();
+}
+function entradaPed(){
+  const pn=PED.pn; const cd=PED.conds.find(x=>String(x.codigo)===$('#pCond').value);
+  const band=$('#pBand').value||'PIX'; const tx=pn($('#pTx').value);
+  const pag={entrada_valor:$('#pEntBox').classList.contains('hide')?0:(pn($('#pEnt').value)||0),bandeira:band,modalidade:$('#pMod').value||'',modo:'loja'};
+  if(!$('#pTxBox').classList.contains('hide')) pag.taxa=tx==null?0:tx/100;
+  return {cd,ent:{loja_id:CAPA.c.loja_id,arquiteto:$('#pArq').checked,goyases:$('#pGoy').checked,frete_cliente:0,desconto_pct:0,pagamento:pag,
+    itens:PED.novo.itens.map(i=>({produto_id:i.produto_id!=null?String(i.produto_id):null,ref:i.ref,descricao:i.descricao,quantidade:i.quantidade,preco_total:i.total}))}};
+}
+async function recalcPed(){
+  if(!PED?.novo) return; const {ent}=entradaPed();
+  const {data:r,error}=await sb.rpc('calcular_negociacao',{p:ent}); if(error) return erro(error); PED.novo.res=r; PED.novo.ent=ent;
+  const cor=r.mc_pct>=0.18?'var(--ok)':r.mc_pct>=0.12?'var(--morna)':'var(--quente)';
+  let comp=''; if(PED.novo.orc){ const {data:ng}=await sb.from('negociacoes').select('resultado,atualizado_em').eq('orcamento_id',PED.novo.orc.id).order('atualizado_em',{ascending:false}).limit(1);
+    if(ng&&ng[0]) comp=`<div class="kpi"><b>${pct(ng[0].resultado?.mc_pct)}</b><span>MC da última negociação simulada</span></div>`; }
+  $('#pRes').innerHTML=`<div class="kpis"><div class="kpi"><b>${brl(r.receita)}</b><span>valor do pedido</span></div><div class="kpi"><b style="color:${cor}">${brl(r.mc)}</b><span>margem de contribuição real</span></div>
+     <div class="kpi"><b style="color:${cor}">${pct(r.mc_pct)}</b><span>MC %</span></div><div class="kpi"><b>${pct(r.taxa_cartao)}</b><span>custo financeiro (${brl(r.custo_financeiro)})</span></div>${comp}</div>
+     ${(r.avisos||[]).map(a=>`<div class="aviso">${esc(a)}</div>`).join('')}`;
+}
+async function salvarPedido(){
+  const n=PED.novo; if(!n?.res) return toast('Aguarde o cálculo');
+  const {cd,ent}=entradaPed(); if(!cd&&!confirm('Salvar sem condição de pagamento cadastrada?')) return;
+  $('#pSalvar').disabled=true; const c=n.r.cabecalho, tot=n.r.totais||{};
+  let path=null; const up=`${CAPA.c.id}/${Date.now()}_pedido_${(c.numero||'').replace(/\D/g,'')}.pdf`;
+  const {error:eUp}=await sb.storage.from('capas').upload(up,n.file,{contentType:'application/pdf'}); if(!eUp) path=up;
+  const reg={capa_id:CAPA.c.id,orcamento_id:n.orc?.id||null,loja_id:CAPA.c.loja_id,numero_santri:c.numero,data_fechamento:c.data_fechamento,data_emissao:c.data_emissao,
+    vendedor_santri:c.vendedor,cliente_pdf:c.cliente,cliente_codigo:c.cliente_codigo,condicao_texto:c.condicao_pagamento,condicao_codigo:cd?.codigo||null,
+    entrada_valor:ent.pagamento.entrada_valor,bandeira:ent.pagamento.bandeira,modalidade:ent.pagamento.modalidade,taxa_manual:ent.pagamento.taxa??null,
+    arquiteto:ent.arquiteto,goyases:ent.goyases,total_produtos:tot['Total produtos']??null,desconto:tot['Valor desconto']??0,total_pedido:n.r.total_geral,
+    observacao:c.observacao,arquivo_path:path,resultado:n.res,criado_por:EU.id};
+  const {data:p,error}=await sb.from('pedidos').insert(reg).select().single();
+  if(error){ $('#pSalvar').disabled=false; return erro(error.code==='23505'?{message:'Este pedido já foi lançado.'}:error); }
+  const ids=[...new Set(n.itens.map(i=>i.produto_id).filter(Boolean))];
+  const {data:ex}=ids.length?await sb.from('produtos').select('id').in('id',ids):{data:[]}; const ok=new Set((ex||[]).map(x=>x.id));
+  const {error:e2}=await sb.from('pedido_itens').insert(n.itens.map(i=>({pedido_id:p.id,ordem:i.ref,ambiente:i.ambiente,produto_id:ok.has(i.produto_id)?i.produto_id:null,codigo_original:i.codigo_original,
+    descricao:i.descricao,marca:i.marca,unidade:i.unidade,quantidade:i.quantidade,preco_unitario:i.preco_unitario,total:i.total}))); if(e2) erro(e2);
+  if(n.orc) await sb.from('orcamentos').update({status:'Ganho'}).eq('id',n.orc.id);
+  await sb.from('capas').update({status:'Ganha (virou pedido)'}).eq('id',CAPA.c.id); CAPA.c.status='Ganha (virou pedido)';
+  await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',
+    resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||''}`});
+  toast('Pedido lançado'); PED.novo=null; abaPed(); if(typeof atualizarResumo==='function') atualizarResumo();
+}
+
+// ---------- Condições de pagamento do Santri (de-para para a taxa que a loja paga) ----------
+let CDF={so:'pend',busca:''};
+async function telaCondicoes(){
+  if(!ehDirecao()) return telaLista();
+  const [{data:cs,error},{data:tx}]=await Promise.all([sb.from('condicoes_pagamento').select('*').order('nome'),sb.from('taxas_cartao').select('bandeira,modalidade,taxa').eq('ativo',true).order('id')]);
+  if(error) return erro(error);
+  const bands=[...new Set((tx||[]).map(t=>t.bandeira))]; const taxa=(b,m)=>(tx||[]).find(t=>t.bandeira===b&&t.modalidade===m)?.taxa;
+  const b=CDF.busca.trim().toUpperCase(); const lista=cs.filter(c=>(CDF.so==='todas'||!c.conferido)&&(!b||c.nome.includes(b)));
+  const pend=cs.filter(c=>!c.conferido).length;
+  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Condições de pagamento</h2>
+   <p class="mut">Cada condição do Santri aponta para a taxa que a loja paga (tabela de cartões / boleto / Santander do planilhão) ou para um custo manual. É isso que o pedido usa para calcular a margem real. Marque "conferido" depois de revisar.</p>
+   <div class="card"><div class="g3"><div><label>Mostrar</label><select id="cdSo"><option value="pend">Só as não conferidas (${pend})</option><option value="todas">Todas (${cs.length})</option></select></div>
+     <div><label>Buscar</label><input id="cdBusca" value="${esc(CDF.busca)}" placeholder="ex.: DUPLICATA"></div></div></div>
+   <div class="card"><div class="tbl"><table><tr><th>Cód.</th><th>Condição no Santri</th><th>Tabela</th><th>Modalidade</th><th>Taxa</th><th>Custo manual %</th><th>Tem entrada</th><th>Conferido</th></tr>
+   ${lista.map(c=>`<tr data-cd="${c.codigo}"><td>${c.codigo}</td><td><b>${esc(c.nome)}</b>${c.observacao?`<div class="mut">${esc(c.observacao)}</div>`:''}</td>
+     <td><select data-f="bandeira" style="min-width:120px"><option value="">(nenhuma)</option>${bands.map(x=>`<option ${x===c.bandeira?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
+     <td><select data-f="modalidade" style="min-width:120px">${(tx||[]).filter(t=>t.bandeira===c.bandeira).map(t=>`<option ${t.modalidade===c.modalidade?'selected':''}>${esc(t.modalidade)}</option>`).join('')||'<option></option>'}</select></td>
+     <td>${c.bandeira?pct(taxa(c.bandeira,c.modalidade)):''}</td>
+     <td><input data-f="taxa_manual" inputmode="decimal" style="width:80px" value="${c.taxa_manual!=null?String(+(c.taxa_manual*100).toFixed(4)).replace('.',','):''}" ${c.bandeira?'disabled':''}></td>
+     <td><input type="checkbox" data-f="tem_entrada" style="width:auto" ${c.tem_entrada?'checked':''}></td>
+     <td><input type="checkbox" data-f="conferido" style="width:auto" ${c.conferido?'checked':''}></td></tr>`).join('')||'<tr><td colspan="8" class="mut">Nada aqui.</td></tr>'}</table></div></div>`;
+  $('#cdSo').value=CDF.so; $('#cdSo').onchange=e=>{CDF.so=e.target.value;telaCondicoes();};
+  let t; $('#cdBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CDF.busca=e.target.value;telaCondicoes();},400)};
+  document.querySelectorAll('[data-cd]').forEach(tr=>tr.querySelectorAll('[data-f]').forEach(el=>el.onchange=async()=>{
+    const f=el.dataset.f; let v; if(el.type==='checkbox') v=el.checked; else if(f==='taxa_manual'){ const n=Number(String(el.value).replace('%','').replace(',','.')); v=el.value.trim()===''||isNaN(n)?null:n/100; } else v=el.value||null;
+    const upd={[f]:v,atualizado_em:new Date().toISOString()};
+    if(f==='bandeira'){ upd.modalidade=v?((tx||[]).find(x=>x.bandeira===v)||{}).modalidade||null:null; if(v) upd.taxa_manual=null; }
+    const {error}=await sb.from('condicoes_pagamento').update(upd).eq('codigo',tr.dataset.cd); if(error) return erro(error); toast('Salvo ✓');
+    if(f==='bandeira'||f==='conferido') telaCondicoes(); }));
 }
 
 // ---------- Profissionais (arquitetos, escritórios, construtores, mestres de obras) ----------
