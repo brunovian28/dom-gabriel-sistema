@@ -126,7 +126,7 @@ sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
 function montarMenu(){
-  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
+  const itens=SETORES.includes(EU.papel)?[['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/capas','Capas']]:[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
@@ -141,6 +141,8 @@ function rota(){
   if(h==='#/conferencia-st') return telaConfST();
   if(h==='#/profissionais') return telaProfissionais();
   if(h==='#/condicoes') return telaCondicoes();
+  if(h==='#/pedidos') return telaPedidos();
+  if(h==='#/agenda') return telaAgenda();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -220,7 +222,7 @@ async function abrirCapa(id){
   $('#conteudo').innerHTML=`
    <div class="linha" style="justify-content:space-between"><button class="link" onclick="location.hash='#/capas'">← Capas</button><span class="mut">${CAPA.podeEditar?'':'Somente leitura (capa de outro vendedor) — você pode registrar produtos vistos e contatos.'}</span></div>
    <div class="card">
-     <div class="linha" style="justify-content:space-between"><div><b style="font-size:18px">${esc(c.numero)}</b> <span class="mut">· aberta em ${dBR(c.data_abertura)} · ${esc(vend?.nome||'')}</span></div><div id="resumo"></div></div>
+     <div class="linha" style="justify-content:space-between"><div><b style="font-size:18px">${esc(c.numero)}<span id="capaCli"></span></b> <span class="mut">· aberta em ${dBR(c.data_abertura)} · ${esc(vend?.nome||'')}</span></div><div id="resumo"></div></div>
      <div class="g3">
        <div><label>Status</label>${sel('status_capa',c.status,`data-t="capas" data-f="status" ${dis}`)}</div>
        <div><label>Próximo passo (obrigatório)</label><input data-t="capas" data-f="proximo_passo" value="${esc(c.proximo_passo)}" ${dis}></div>
@@ -231,7 +233,7 @@ async function abrirCapa(id){
    <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['negoc','Negociação'],['ped','Pedido'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
    <div id="aba"></div>`;
   document.querySelectorAll('.tabs a').forEach(a=>a.onclick=e=>{e.preventDefault();abaAtual=a.dataset.aba;document.querySelectorAll('.tabs a').forEach(x=>x.classList.toggle('on',x===a));renderAba();});
-  ligarCampos($('#conteudo')); atualizarResumo(); renderAba();
+  ligarCampos($('#conteudo')); atualizarResumo(); atualizarNomeCapa(); renderAba();
 }
 function ligarCampos(root){
   root.querySelectorAll('[data-t][data-f]').forEach(el=>{
@@ -242,7 +244,9 @@ function ligarCampos(root){
       if(t==='capas'&&f==='falou_com_decisor') v = v===null?null:v==='Sim';
       const id = t==='capas'?CAPA.c.id : t==='obras'?CAPA.ob.id : el.dataset.id;
       const {error}=await sb.from(t).update({[f]:v}).eq('id',id); if(error) return erro(error);
-      if(t==='capas'){CAPA.c[f]=v; if(f==='status') $('#perdaBox').classList.toggle('hide',v!=='Perdida');}
+      if(t==='capas'){CAPA.c[f]=v; if(f==='status') $('#perdaBox').classList.toggle('hide',v!=='Perdida');
+        if(f==='motivo_perda'&&v&&CAPA.c.status==='Perdida'){ const {data:ab}=await sb.from('orcamentos').update({status:'Perdido',motivo_perda:v}).eq('capa_id',CAPA.c.id).eq('status','Em negociação').select('id');
+          if(ab&&ab.length) toast(ab.length+' orçamento(s) em negociação marcados como perdidos'); } }
       toast('Salvo ✓'); atualizarResumo();
     });
   });
@@ -258,21 +262,19 @@ function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:aba
 async function abaQuem(){
   const {c,ob,podeEditar}=CAPA; const dis=podeEditar?'':'disabled';
   const {data:vs0}=await sb.from('obra_pessoas').select('papel,decide,pessoa:pessoas(*)').eq('obra_id',ob.id); const vs=(vs0||[]).filter(v=>!PAPEL_TIPO[v.papel]);
-  $('#aba').innerHTML=`<div id="profObra"></div>
-  <div class="card"><h3>Cliente e família</h3><p class="mut" style="margin-top:-6px">Titular da nota, quem decide e quem influencia. Arquiteto, construtor e mestre de obras ficam no quadro acima.</p>
-    <div class="tbl"><table><tr><th>Nome</th><th>WhatsApp</th><th>Papel</th><th>Decide?</th><th>Cód. Santri</th><th></th></tr>
-    ${(vs||[]).map(v=>`<tr><td><input data-t="pessoas" data-f="nome" data-id="${v.pessoa.id}" value="${esc(v.pessoa.nome)}" ${dis}></td>
-      <td><input data-t="pessoas" data-f="whatsapp" data-id="${v.pessoa.id}" value="${esc(v.pessoa.whatsapp)}" ${dis}></td>
-      <td>${esc(v.papel)}</td><td>${v.decide?'Sim':'Não'}</td>
-      <td><input style="width:100px" data-t="pessoas" data-f="codigo_santri" data-id="${v.pessoa.id}" value="${esc(v.pessoa.codigo_santri)}" ${dis}></td>
-      <td>${podeEditar?`<button class="del" data-rm="${v.pessoa.id}|${esc(v.papel)}">remover</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">Nenhuma pessoa vinculada ainda. A obra pode ficar sem dono até você descobrir.</td></tr>'}
+  const papeis=(OP.papel_obra||[]).filter(v=>!PAPEL_TIPO[v]);
+  $('#aba').innerHTML=`
+  <div class="card"><h3>Cliente e família</h3><p class="mut" style="margin-top:-6px">Titular da nota, quem decide e quem influencia. Clique no nome para ver ou completar o cadastro.</p>
+    <div class="tbl"><table><tr><th>Nome</th><th>WhatsApp</th><th>Papel na obra</th><th>Decide?</th><th>Aniversário</th><th>Cód. cliente Santri</th><th></th></tr>
+    ${(vs||[]).map(v=>`<tr><td><a href="#" data-editcli="${v.pessoa.id}"><b>${esc(v.pessoa.nome)}</b></a></td><td>${esc(v.pessoa.whatsapp||'')}</td>
+      <td>${esc(v.papel)}</td><td>${v.decide?'Sim':'Não'}</td><td>${aniv(v.pessoa.data_nascimento)}</td><td>${esc(v.pessoa.codigo_santri||'')}</td>
+      <td>${podeEditar?`<button class="del" data-rm="${v.pessoa.id}|${esc(v.papel)}">tirar da obra</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="mut">Nenhuma pessoa ainda. Cadastre o cliente abaixo.</td></tr>'}
     </table></div>
-    ${podeEditar?`<div class="card" style="background:#fafbfc;margin-top:12px"><b>Adicionar pessoa</b>
-      <div class="g3"><div><label>Buscar pelo nome ou WhatsApp</label><input id="pBusca" placeholder="digite para buscar ou cadastrar"></div>
-      <div><label>Papel na obra</label><select id="pPapel"><option value=""></option>${(OP.papel_obra||[]).filter(v=>!PAPEL_TIPO[v]).map(v=>`<option>${esc(v)}</option>`).join('')}</select></div>
-      <div><label>Decide a compra?</label><select id="pDecide"><option value="false">Não</option><option value="true">Sim</option></select></div></div>
-      <div id="pSug" class="sug hide" style="margin-top:6px"></div></div>`:''}
+    ${podeEditar?`<div class="linha" style="margin-top:12px;gap:10px;align-items:flex-start">
+      <div style="flex:1;min-width:220px;position:relative"><input id="pBusca" placeholder="buscar cliente já cadastrado (nome ou WhatsApp)"><div id="pSug" class="sug hide" style="margin-top:4px"></div></div>
+      <button class="gold" id="pNovo">+ Novo cadastro</button></div>`:''}
   </div>
+  <div id="profObra"></div>
   <div class="card"><h3>Obra</h3>
     <div class="g2">
       <div><label>Endereço</label><input data-t="obras" data-f="endereco" value="${esc(ob.endereco)}" ${dis}></div>
@@ -298,40 +300,97 @@ async function abaQuem(){
   if($('#gps')) $('#gps').onclick=()=>navigator.geolocation.getCurrentPosition(async p=>{
     const {error}=await sb.from('obras').update({latitude:p.coords.latitude.toFixed(7),longitude:p.coords.longitude.toFixed(7)}).eq('id',ob.id);
     if(error) return erro(error); CAPA.ob.latitude=p.coords.latitude.toFixed(7); CAPA.ob.longitude=p.coords.longitude.toFixed(7); toast('Localização salva'); abaQuem();},()=>toast('Não foi possível obter a localização'));
-  if($('#pBusca')){ let t; $('#pBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>buscarPessoa(e.target.value),300)}; }
+  if($('#pBusca')){ let t; $('#pBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>buscarPessoa(e.target.value),300)};
+    $('#pBusca').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); formCliente({nome:e.target.value.trim(),vincular:true}); } };
+    $('#pNovo').onclick=()=>formCliente({nome:$('#pBusca').value.trim(),vincular:true}); }
+  document.querySelectorAll('[data-editcli]').forEach(a=>a.onclick=e=>{e.preventDefault(); const v=vs.find(x=>x.pessoa.id===a.dataset.editcli); formCliente({id:a.dataset.editcli,papel:v?.papel,decide:v?.decide});});
+  atualizarNomeCapa();
 }
 async function buscarPessoa(txt){
   const box=$('#pSug'); txt=txt.trim(); if(txt.length<2){box.classList.add('hide');return;}
-  const dig=txt.replace(/\D/g,''); const t=txt.replace(/[%,]/g,'');
-  let q=sb.from('pessoas').select('id,nome,whatsapp,profissional,profissao').limit(8);
-  q = dig.length>=4 ? q.or(`whatsapp.ilike.%${dig}%,telefone.ilike.%${dig}%,nome.ilike.%${t}%`) : q.ilike('nome','%'+t+'%');
+  const dig=txt.replace(/\D/g,''); const t=txt.replace(/[%,()]/g,'');
+  let q=sb.from('pessoas').select('id,nome,whatsapp,codigo_santri,profissional,profissao').limit(8);
+  q = dig.length>=4 ? q.or(`whatsapp.ilike.*${dig}*,telefone.ilike.*${dig}*,codigo_santri.eq.${dig},nome.ilike.*${t}*`) : q.ilike('nome','%'+t+'%');
   const {data}=await q;
   box.classList.remove('hide');
-  box.innerHTML=(data||[]).map(p=>`<div data-p="${p.id}"><b>${esc(p.nome)}</b> <span class="mut">${esc(p.whatsapp||'')} ${p.profissional?'· '+esc(p.profissao||'profissional'):''}</span></div>`).join('')+
-    `<div data-novo="1" style="color:var(--navy)"><b>+ Cadastrar nova pessoa:</b> ${esc(txt)}</div>`;
-  box.querySelectorAll('[data-p]').forEach(d=>d.onclick=()=>vincularPessoa(d.dataset.p));
-  box.querySelector('[data-novo]').onclick=()=>novaPessoa(txt);
+  box.innerHTML=(data||[]).map(p=>`<div data-p="${p.id}"><b>${esc(p.nome)}</b> <span class="mut">${esc(p.whatsapp||'')}${p.codigo_santri?' · cód. '+esc(p.codigo_santri):''}${p.profissional?' · '+esc(p.profissao||'profissional'):''}</span></div>`).join('')+
+    `<div data-novo="1" style="color:var(--navy)"><b>+ Novo cadastro:</b> ${esc(txt)}</div>`;
+  box.querySelectorAll('[data-p]').forEach(d=>d.onclick=()=>{box.classList.add('hide'); formCliente({id:d.dataset.p,vincular:true});});
+  box.querySelector('[data-novo]').onclick=()=>{box.classList.add('hide'); formCliente({nome:txt,vincular:true});};
 }
-function novaPessoa(txt){
-  const ehNum=/^\+?[\d\s()-]{8,}$/.test(txt);
-  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Nova pessoa</h3>
-    <label>Nome</label><input id="npNome" value="${ehNum?'':esc(txt)}"><label>WhatsApp</label><input id="npWpp" value="${ehNum?esc(txt):''}">
-    <label>E-mail</label><input id="npEmail"><label>É profissional (arquiteto, designer, engenheiro)?</label>
-    <select id="npProf"><option value="">Não</option><option>Arquiteto(a)</option><option>Designer de interiores</option><option>Engenheiro(a)</option><option>Mestre de obras</option></select>
-    <div class="linha" style="margin-top:12px"><button class="gold" id="npOk">Salvar e vincular</button><button class="sec" id="npX">Cancelar</button></div></div></div>`;
-  $('#npX').onclick=()=>$('#modal').innerHTML='';
-  $('#npOk').onclick=async()=>{
-    if(!$('#npNome').value.trim()) return toast('Informe o nome');
-    const prof=$('#npProf').value;
-    const {data,error}=await sb.from('pessoas').insert({nome:$('#npNome').value.trim(),whatsapp:$('#npWpp').value.trim()||null,email:$('#npEmail').value.trim()||null,profissional:!!prof,profissao:prof||null,criado_por:EU.id}).select().single();
-    if(error) return erro(error); $('#modal').innerHTML=''; vincularPessoa(data.id);
+// cadastro completo do cliente / familiar (e o papel dele nesta obra)
+async function formCliente(ini){
+  const p=ini.id?(await sb.from('pessoas').select('*').eq('id',ini.id).single()).data:{nome:ini.nome||''};
+  if(!ini.id&&/^\+?[\d\s()-]{8,}$/.test(p.nome||'')){p.whatsapp=p.nome;p.nome='';}
+  const {data:jaVs}=await sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id);
+  const temTitular=(jaVs||[]).some(v=>v.papel==='Titular da nota');
+  const papeis=(OP.papel_obra||[]).filter(v=>!PAPEL_TIPO[v]);
+  const papel=ini.papel||(temTitular?'':'Titular da nota');
+  const podeEd=CAPA.podeEditar; const dis=podeEd?'':'disabled';
+  const f=(id,lab,val,tipo='text',ph='')=>`<div><label>${lab}</label><input id="${id}" type="${tipo}" value="${esc(val||'')}" placeholder="${ph}" ${dis}></div>`;
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>${ini.id?'Cadastro do cliente':'Novo cliente'}</h3>
+    <label>Nome completo *</label><input id="fcNome" value="${esc(p.nome||'')}" ${dis}>
+    <div class="g2">${f('fcWpp','WhatsApp',p.whatsapp)}${f('fcTel','Telefone',p.telefone)}${f('fcEmail','E-mail',p.email)}${f('fcNasc','Data de nascimento',p.data_nascimento,'date')}
+      ${f('fcDoc','CPF / CNPJ',p.cpf_cnpj)}${f('fcSantri','Cód. cliente Santri',p.codigo_santri,'text','preenche sozinho no 1º orçamento')}
+      ${f('fcProf','Profissão',p.profissao)}${f('fcInsta','Instagram',p.instagram,'text','@')}
+      ${f('fcEnd','Endereço (residência)',p.endereco)}${f('fcBairro','Bairro',p.bairro)}${f('fcCid','Cidade',p.cidade)}${f('fcUf','UF',p.uf)}</div>
+    <label>Observações</label><textarea id="fcObs" style="min-height:60px" ${dis}>${esc(p.observacao||'')}</textarea>
+    ${ini.vincular||ini.papel?`<div class="g2" style="margin-top:6px"><div><label>Papel nesta obra *</label><select id="fcPapel" ${dis}><option value=""></option>${papeis.map(v=>`<option ${v===papel?'selected':''}>${esc(v)}</option>`).join('')}</select></div>
+      <div><label>Decide a compra?</label><select id="fcDecide" ${dis}><option value="false">Não</option><option value="true" ${ini.decide||(!temTitular&&!ini.papel)?'selected':''}>Sim</option></select></div></div>`:''}
+    <div id="fcAviso"></div>
+    <div class="linha" style="margin-top:12px">${podeEd?'<button class="gold" id="fcOk">Salvar</button>':''}<button class="sec" id="fcX">Fechar</button></div></div></div>`;
+  $('#fcX').onclick=()=>$('#modal').innerHTML='';
+  if(!podeEd) return;
+  $('#fcOk').onclick=async()=>{
+    const nome=$('#fcNome').value.trim(); if(!nome) return toast('Informe o nome');
+    const v=id=>$('#'+id).value.trim()||null;
+    const reg={nome,whatsapp:v('fcWpp'),telefone:v('fcTel'),email:v('fcEmail'),data_nascimento:v('fcNasc'),cpf_cnpj:v('fcDoc'),codigo_santri:v('fcSantri'),
+      profissao:v('fcProf'),instagram:v('fcInsta'),endereco:v('fcEnd'),bairro:v('fcBairro'),cidade:v('fcCid'),uf:v('fcUf'),observacao:v('fcObs')};
+    const papelSel=$('#fcPapel')?$('#fcPapel').value:null;
+    if($('#fcPapel')&&!papelSel) return toast('Escolha o papel da pessoa nesta obra');
+    if(!ini.id&&!$('#fcOk').dataset.conf){
+      const dig=(reg.whatsapp||'').replace(/\D/g,'').slice(-8); const pn=nome.split(/\s+/).slice(0,2).join(' ').replace(/[%,()]/g,'');
+      let q=sb.from('pessoas').select('id,nome,whatsapp,codigo_santri').limit(5); q=dig.length>=8?q.or(`whatsapp.ilike.*${dig}*,nome.ilike.*${pn}*`):q.ilike('nome','%'+pn+'%');
+      const {data:dup}=await q;
+      if(dup&&dup.length){ $('#fcAviso').innerHTML=`<div class="aviso">Já existe cadastro parecido: ${dup.map(d=>`<a href="#" data-usar="${d.id}"><b>${esc(d.nome)}</b></a> ${esc(d.whatsapp||'')}`).join(' · ')}.<br>Clique no nome para usar o existente, ou em Salvar de novo para criar mesmo assim.</div>`;
+        $('#fcOk').dataset.conf='1'; $('#fcAviso').querySelectorAll('[data-usar]').forEach(a=>a.onclick=e=>{e.preventDefault(); formCliente({id:a.dataset.usar,vincular:true});}); return; }
+    }
+    if(reg.cpf_cnpj===null) delete reg.cpf_cnpj;
+    const q=ini.id?sb.from('pessoas').update(reg).eq('id',ini.id).select().single():sb.from('pessoas').insert({...reg,criado_por:EU.id,loja_id:EU.loja_id}).select().single();
+    const {data,error}=await q; if(error) return erro(/cpf_cnpj/.test(error.message)?{message:'Já existe outra pessoa com este CPF/CNPJ — busque por ela.'}:error);
+    if(papelSel){
+      if(ini.papel&&ini.papel!==papelSel) await sb.from('obra_pessoas').delete().eq('obra_id',CAPA.ob.id).eq('pessoa_id',data.id).eq('papel',ini.papel);
+      const {error:e2}=await sb.from('obra_pessoas').upsert({obra_id:CAPA.ob.id,pessoa_id:data.id,papel:papelSel,decide:$('#fcDecide').value==='true'},{onConflict:'obra_id,pessoa_id,papel'});
+      if(e2) return erro(e2);
+    }
+    $('#modal').innerHTML=''; toast('Cadastro salvo'); abaQuem();
   };
 }
-async function vincularPessoa(pid){
-  const papel=$('#pPapel').value; if(!papel) return toast('Escolha o papel da pessoa na obra');
-  const {error}=await sb.from('obra_pessoas').insert({obra_id:CAPA.ob.id,pessoa_id:pid,papel,decide:$('#pDecide').value==='true'});
-  if(error) return erro(error.code==='23505'?{message:'Essa pessoa já tem esse papel na obra'}:error);
-  toast('Pessoa vinculada'); abaQuem();
+// nome do cliente no topo da capa
+async function atualizarNomeCapa(){
+  const box=$('#capaCli'); if(!box) return;
+  const {data:vs}=await sb.from('obra_pessoas').select('papel,pessoa:pessoas(nome)').eq('obra_id',CAPA.ob.id);
+  const ord=['Titular da nota','Decisor','Influenciador (cônjuge/família)'];
+  const cli=(vs||[]).filter(v=>!PAPEL_TIPO[v.papel]).sort((a,b)=>(ord.indexOf(a.papel)+99)%99-(ord.indexOf(b.papel)+99)%99)[0];
+  let nome=cli?.pessoa?.nome;
+  if(!nome){ const {data:o}=await sb.from('orcamentos').select('cliente_pdf').eq('capa_id',CAPA.c.id).not('cliente_pdf','is',null).order('criado_em',{ascending:false}).limit(1); nome=(o?.[0]?.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,''); }
+  box.textContent=nome?' · '+nome:''; CAPA.clienteNome=nome||'';
+}
+// código de cliente do Santri vindo do orçamento/pedido: completa o cadastro do titular (ou cria o titular)
+async function vincularClienteSantri(cab){
+  const cod=cab?.cliente_codigo; if(!cod) return;
+  const nomePdf=(cab.cliente||'').replace(/^[\d.]+\s*-\s*/,'').trim();
+  const {data:vs}=await sb.from('obra_pessoas').select('papel,pessoa:pessoas(id,nome,codigo_santri)').eq('obra_id',CAPA.ob.id);
+  const cli=(vs||[]).filter(v=>!PAPEL_TIPO[v.papel]);
+  if(cli.some(v=>v.pessoa.codigo_santri===cod)) return;
+  const alvo=cli.find(v=>v.papel==='Titular da nota'&&!v.pessoa.codigo_santri)||(cli.length===1&&!cli[0].pessoa.codigo_santri?cli[0]:null);
+  if(alvo){ await sb.from('pessoas').update({codigo_santri:cod}).eq('id',alvo.pessoa.id); return; }
+  if(!cli.length&&nomePdf){
+    let {data:ex}=await sb.from('pessoas').select('id').eq('codigo_santri',cod).limit(1);
+    let pid=ex?.[0]?.id;
+    if(!pid){ const {data:n}=await sb.from('pessoas').insert({nome:nomePdf,codigo_santri:cod,criado_por:EU.id,loja_id:CAPA.c.loja_id}).select().single(); pid=n?.id; }
+    if(pid) await sb.from('obra_pessoas').insert({obra_id:CAPA.ob.id,pessoa_id:pid,papel:'Titular da nota',decide:true});
+  }
 }
 
 // ---------- Qualificação (BANT) ----------
@@ -375,13 +434,13 @@ async function abaProdutos(){
   const cor={'Amou':'#c62828','Gostou':'#2e7d32','Talvez':'#e08e0b','Não gostou':'#6b7684'};
   $('#aba').innerHTML=`
   <div class="card"><h3>Registrar produto que o cliente viu</h3>
-    <label>Buscar produto (nome, código Santri ou código da fábrica)</label><input id="prBusca" placeholder="ex.: York, 6063443A, Timeless…">
+    <label>Buscar produto (nome, código Santri ou código da fábrica)</label><div class="linha" style="gap:8px"><input id="prBusca" style="flex:1" placeholder="ex.: York, 6063443A, Timeless…"><button class="sec" id="prLivreBtn">Não achei / texto livre</button></div>
     <div id="prSug" class="sug hide" style="margin-top:6px"></div>
     <div id="prForm" class="hide" style="margin-top:10px">
       <div class="item" id="prEscolhido"></div>
       <div class="g3"><div><label>Ambiente</label><input id="prAmb" placeholder="ex.: Banho master"></div>
       <div><label>Reação do cliente</label>${sel('reacao','','id="prReacao"')}</div>
-      <div><label>Observação</label><input id="prObs" placeholder="cor, formato, dúvida de preço…"></div></div>
+      </div><label>Observação</label><textarea id="prObs" style="min-height:70px" placeholder="cor, formato, dúvida de preço, o que o cliente comentou… (sem limite de texto)"></textarea>
       <div class="linha" style="margin-top:10px"><button class="gold" id="prAdd">Adicionar</button><button class="sec" id="prCanc">Cancelar</button></div>
     </div>
   </div>
@@ -389,15 +448,16 @@ async function abaProdutos(){
     ${(pv||[]).map(p=>`<div class="item"><div class="linha" style="justify-content:space-between"><b>${esc(p.produto?.nome||p.descricao_livre)}</b>
       <span class="pill" style="background:${cor[p.reacao]||'#999'}">${esc(p.reacao||'—')}</span></div>
       <div class="mut">${esc(p.ambiente||'')}${p.produto?` · ${esc(p.produto.marca||'')} · cód. ${p.produto.id} / ${esc(p.produto.codigo_original||'')}`:''} · ${dBR(p.data)}</div>
-      ${p.observacao?`<div>${esc(p.observacao)}</div>`:''}
+      ${(CAPA.podeEditar||p.registrado_por===EU.id)?`<textarea data-t="capa_produtos_vistos" data-f="observacao" data-id="${p.id}" style="min-height:48px;margin-top:6px" placeholder="observação (salva sozinha ao sair do campo)">${esc(p.observacao||'')}</textarea>`:(p.observacao?`<div style="white-space:pre-wrap">${esc(p.observacao)}</div>`:'')}
       ${(CAPA.podeEditar||p.registrado_por===EU.id)?`<button class="del" data-rmpv="${p.id}">remover</button>`:''}</div>`).join('')||'<p class="mut">Nada registrado ainda.</p>'}
   </div>`;
   let t; $('#prBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>buscarProduto(e.target.value),300)};
+  $('#prLivreBtn').onclick=()=>escolherProduto({nome:$('#prBusca').value.trim()}); ligarCampos($('#aba'));
   $('#prCanc').onclick=()=>{prodSel=null;$('#prForm').classList.add('hide');};
   $('#prAdd').onclick=async()=>{
     if(!$('#prReacao').value) return toast('Escolha a reação do cliente');
     const reg={capa_id:CAPA.c.id,ambiente:$('#prAmb').value||null,reacao:$('#prReacao').value,observacao:$('#prObs').value||null,registrado_por:EU.id};
-    if(prodSel.id) reg.produto_id=prodSel.id; else reg.descricao_livre=prodSel.nome;
+    if(prodSel.id) reg.produto_id=prodSel.id; else { reg.descricao_livre=($('#prLivre')?.value||'').trim(); if(!reg.descricao_livre) return toast('Descreva o produto'); }
     const {error}=await sb.from('capa_produtos_vistos').insert(reg); if(error) return erro(error);
     toast('Produto registrado'); prodSel=null; abaProdutos();
   };
@@ -415,7 +475,8 @@ async function buscarProduto(txt){
   box.querySelector('[data-livre]').onclick=()=>escolherProduto({nome:txt});
 }
 function escolherProduto(p){prodSel=p;$('#prSug').classList.add('hide');$('#prForm').classList.remove('hide');
-  $('#prEscolhido').innerHTML=`<b>${esc(p.nome)}</b> <span class="mut">${p.id?esc(p.marca||'')+' · cód. '+p.id:'(texto livre)'}</span>`;}
+  $('#prEscolhido').innerHTML=p.id?`<b>${esc(p.nome)}</b> <span class="mut">${esc(p.marca||'')+' · cód. '+p.id}</span>`
+    :`<label>Produto (texto livre)</label><input id="prLivre" value="${esc(p.nome||'')}" placeholder="ex.: porcelanato cinza 120x120 fosco da vitrine">`;}
 
 // ---------- Checklist ----------
 async function abaCheck(){
@@ -542,7 +603,7 @@ async function abaOrc(){
         <div><label>Quente?</label><select data-quente="${o.id}" ${dis}><option value="false">Não</option><option value="true" ${o.quente?'selected':''}>Sim</option></select></div>
         <div><label>Status</label>${sel('status_orcamento',o.status,`data-t="orcamentos" data-f="status" data-id="${o.id}" ${dis}`)}</div>
         <div><label>Motivo se perdido</label>${sel('motivo_perda',o.motivo_perda,`data-t="orcamentos" data-f="motivo_perda" data-id="${o.id}" ${dis}`)}</div>
-      </div>
+      </div>${o.status==='Perdido'||o.motivo_perda?`<label>Detalhe da perda (concorrente, valor, o que faltou…)</label><textarea data-t="orcamentos" data-f="detalhe_perda" data-id="${o.id}" style="min-height:48px" ${dis}>${esc(o.detalhe_perda||'')}</textarea>`:''}
       <div class="linha" style="margin-top:8px">
         ${o.lido_do_pdf?`<button class="sec" data-itens="${o.id}">Ver itens e opções</button>`:''}
         ${o.pdf_path?`<button class="link" data-pdf="${esc(o.pdf_path)}">Abrir PDF</button>`:''}
@@ -645,12 +706,12 @@ function renderRevisao(){
     const {error:eUp}=await sb.storage.from('capas').upload(up,r.file,{contentType:'application/pdf'}); if(!eUp) path=up;
     const ok=await salvarOrcamento({numero_santri:c.numero,versao:$('#rVer').value||null,data_emissao:c.data_emissao,data_validade:c.data_validade,vendedor_santri:c.vendedor,
       condicao_pagamento:c.condicao_pagamento,cliente_pdf:c.cliente,momento:$('#rMom').value,valor_total_pdf:r.total_geral,valor_provavel:Math.round(valorProvavel(it)*100)/100,
-      quente:$('#rQuente').value==='true',pdf_path:path,lido_do_pdf:true}, it, r.existentes);
+      quente:$('#rQuente').value==='true',pdf_path:path,lido_do_pdf:true,_cab:c}, it, r.existentes);
     if(!ok) $('#rSalvar').disabled=false; else ORC_NOVO=null;
   };
 }
 async function salvarOrcamento(reg, itens, existentes){
-  reg.capa_id=CAPA.c.id; reg.criado_por=EU.id;
+  const cabS=reg._cab; delete reg._cab; reg.capa_id=CAPA.c.id; reg.criado_por=EU.id;
   if(existentes&&existentes.length){ await sb.from('orcamentos').update({status:'Substituído (nova versão)',quente:false}).in('id',existentes.map(e=>e.id)); }
   const {data:o,error}=await sb.from('orcamentos').insert(reg).select().single();
   if(error){ erro(error.code==='23505'?{message:'Já existe um orçamento quente neste momento. Salve como "não quente" ou desmarque o outro.'}:error); return false; }
@@ -664,6 +725,7 @@ async function salvarOrcamento(reg, itens, existentes){
     const {error:e2}=await sb.from('orcamento_itens').insert(rows); if(e2) erro(e2);
   }
   if(CAPA.c.status==='Aberta'){await sb.from('capas').update({status:'Em orçamento'}).eq('id',CAPA.c.id);CAPA.c.status='Em orçamento';}
+  if(cabS){ await vincularClienteSantri(cabS); atualizarNomeCapa(); }
   await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Orçamento enviado',
     resumo:`Orçamento ${reg.numero_santri||''} (${reg.momento}) — PDF ${brl(reg.valor_total_pdf)}, provável ${brl(reg.valor_provavel)}`});
   toast('Orçamento salvo'); abaOrc(); atualizarResumo(); return true;
@@ -887,7 +949,7 @@ async function abaPed(){
     sb.from('taxas_cartao').select('bandeira,modalidade').eq('ativo',true).order('id'),
     sb.from('orcamentos').select('id,numero_santri,versao,status').eq('capa_id',CAPA.c.id),
     sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id).eq('papel','Arquiteto / designer')]);
-  PED={peds:peds||[],conds:conds||[],tx:tx||[],orcs:orcs||[],temArq:(arq||[]).length>0||!!CAPA.ob.escritorio_id,novo:null};
+  const abrir=PED?.abrir||null; PED={abrir,peds:peds||[],conds:conds||[],tx:tx||[],orcs:orcs||[],temArq:(arq||[]).length>0||!!CAPA.ob.escritorio_id,novo:null};
   $('#aba').innerHTML=`
    ${CAPA.podeEditar?`<div class="card"><h3>Subir pedido do Santri</h3>
      <p class="mut" style="margin-top:-4px">Quando o cliente fechar, lance o pedido no Santri e suba o PDF aqui. O sistema liga o pedido ao orçamento de mesmo número, calcula a margem real e marca a capa como ganha.</p>
@@ -906,11 +968,13 @@ function listaPeds(){
   ${PED.peds.map(p=>{const r=p.resultado||{};return `<tr style="${p.status==='Cancelado'?'opacity:.5':''}"><td><b>${esc(p.numero_santri)}</b>${p.orcamento_id?'':' <span class="mut">(sem orçamento)</span>'}</td><td>${dBR(p.data_fechamento)}</td>
     <td>${esc(p.condicao_texto||'')}${p.bandeira&&p.bandeira!=='Boleto'?' <span class="mut">· '+esc(p.bandeira)+'</span>':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td>
     <td style="text-align:right"><b>${brl(r.mc)}</b> <span class="mut">${pct(r.mc_pct)}</span></td><td>${esc(p.status)}</td>
-    <td style="white-space:nowrap">${p.arquivo_path?`<button class="link" data-ppdf="${esc(p.arquivo_path)}">PDF</button>`:''} <button class="link" data-pver="${p.id}">itens</button>
+    <td style="white-space:nowrap">${p.arquivo_path?`<button class="link" data-ppdf="${esc(p.arquivo_path)}">PDF</button>`:''} <button class="sec" data-pcapa="${p.id}">Capa do pedido</button> <button class="link" data-pver="${p.id}">itens</button>
       ${ehDirecao()&&p.status!=='Cancelado'?`<button class="link" style="color:#b33" data-pcanc="${p.id}">cancelar</button>`:''}</td></tr>
-    <tr class="hide" id="pit_${p.id}"><td colspan="7"></td></tr>`}).join('')}</table></div>`;
+    <tr class="hide" id="pit_${p.id}"><td colspan="7"></td></tr><tr><td colspan="7" style="padding:0;border:none"><div id="capa_${p.id}"></div></td></tr>`}).join('')}</table></div>`;
 }
 function ligarListaPeds(){
+  document.querySelectorAll('[data-pcapa]').forEach(b=>b.onclick=()=>capaPedido(b.dataset.pcapa));
+  if(PED.peds.length===1||PED.abrir) { const alvo=PED.abrir||PED.peds[0].id; PED.abrir=null; if($('#capa_'+alvo)) capaPedido(alvo); }
   document.querySelectorAll('[data-ppdf]').forEach(b=>b.onclick=async()=>{const {data,error}=await sb.storage.from('capas').createSignedUrl(b.dataset.ppdf,600);if(error)return erro(error);window.open(data.signedUrl,'_blank');});
   document.querySelectorAll('[data-pcanc]').forEach(b=>b.onclick=async()=>{if(!confirm('Cancelar este pedido? Ele sai da margem do mês.'))return;
     const {error}=await sb.from('pedidos').update({status:'Cancelado'}).eq('id',b.dataset.pcanc); if(error) return erro(error); toast('Pedido cancelado'); abaPed();});
@@ -948,6 +1012,8 @@ async function lerPedido(file){
       <div id="pTxBox"><label>Custo financeiro (% do valor a prazo)</label><input id="pTx" inputmode="decimal" placeholder="ex.: 2,5"></div>
       <div style="align-self:end"><label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pArq" style="width:auto" ${PED.temArq?'checked':''}> Tem arquiteto (RT)</label>
         <label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pGoy" style="width:auto" ${PED.temArq?'checked':''}> Goyases / Metropolitano</label></div></div>
+    <div class="g3" style="margin-top:6px"><div><label>Data que o cliente precisa * (limite)</label><input type="date" id="pPrecisa"></div>
+      <div><label>Previsão de entrega</label><input type="date" id="pPrev"></div></div>
     <div id="pCondObs"></div><div id="pRes" style="margin-top:10px"></div>
     <div class="linha" style="margin-top:10px"><button class="gold" id="pSalvar">Confirmar pedido</button><button class="sec" id="pCanc">Cancelar</button></div></div>`;
   const pn=v=>{v=String(v||'').trim(); if(!v) return null; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); const n=Number(v.replace('%','')); return isNaN(n)?null:n;};
@@ -985,6 +1051,9 @@ async function recalcPed(){
 async function salvarPedido(){
   const n=PED.novo; if(!n?.res) return toast('Aguarde o cálculo');
   const {cd,ent}=entradaPed(); if(!cd&&!confirm('Salvar sem condição de pagamento cadastrada?')) return;
+  const precisa=$('#pPrecisa').value||null, prev=$('#pPrev').value||null;
+  if(!precisa) return toast('Informe a data que o cliente precisa da mercadoria');
+  if(prev&&prev>precisa) return toast('A previsão de entrega não pode passar da data que o cliente precisa');
   $('#pSalvar').disabled=true; const c=n.r.cabecalho, tot=n.r.totais||{};
   let path=null; const up=`${CAPA.c.id}/${Date.now()}_pedido_${(c.numero||'').replace(/\D/g,'')}.pdf`;
   const {error:eUp}=await sb.storage.from('capas').upload(up,n.file,{contentType:'application/pdf'}); if(!eUp) path=up;
@@ -992,7 +1061,8 @@ async function salvarPedido(){
     vendedor_santri:c.vendedor,cliente_pdf:c.cliente,cliente_codigo:c.cliente_codigo,condicao_texto:c.condicao_pagamento,condicao_codigo:cd?.codigo||null,
     entrada_valor:ent.pagamento.entrada_valor,bandeira:ent.pagamento.bandeira,modalidade:ent.pagamento.modalidade,taxa_manual:ent.pagamento.taxa??null,
     arquiteto:ent.arquiteto,goyases:ent.goyases,total_produtos:tot['Total produtos']??null,desconto:tot['Valor desconto']??0,total_pedido:n.r.total_geral,
-    observacao:c.observacao,arquivo_path:path,resultado:n.res,criado_por:EU.id};
+    observacao:c.observacao,arquivo_path:path,resultado:n.res,criado_por:EU.id,data_cliente_precisa:precisa,previsao_entrega:prev,
+    entrega_endereco:[CAPA.ob.endereco,CAPA.ob.bairro,CAPA.ob.cidade].filter(Boolean).join(', ')||null,info_gerais:c.observacao||null};
   const {data:p,error}=await sb.from('pedidos').insert(reg).select().single();
   if(error){ $('#pSalvar').disabled=false; return erro(error.code==='23505'?{message:'Este pedido já foi lançado.'}:error); }
   const ids=[...new Set(n.itens.map(i=>i.produto_id).filter(Boolean))];
@@ -1003,7 +1073,181 @@ async function salvarPedido(){
   await sb.from('capas').update({status:'Ganha (virou pedido)'}).eq('id',CAPA.c.id); CAPA.c.status='Ganha (virou pedido)';
   await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',
     resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||''}`});
-  toast('Pedido lançado'); PED.novo=null; abaPed(); if(typeof atualizarResumo==='function') atualizarResumo();
+  await vincularClienteSantri(c); atualizarNomeCapa();
+  toast('Pedido lançado — complete a capa do pedido'); PED.novo=null; PED.abrir=p.id; const keep=p.id; await abaPed(); if(!$('#capa_'+keep).innerHTML) capaPedido(keep); if(typeof atualizarResumo==='function') atualizarResumo();
+}
+
+// ---------- Capa do pedido (digital) ----------
+const SETORES=['financeiro','compras','logistica'];
+const ETAPAS=[['financeiro_ok','Financeiro confirmou','financeiro',null],['compras_recebido','Compras recebeu o pedido','compras',null],['enviado_fabrica','Enviado para a fábrica','compras','Pedido na fábrica'],
+  ['na_transportadora','Na transportadora (pátio)','logistica','Na transportadora (pátio)'],['no_deposito','Chegou no depósito','logistica','No depósito'],['entregue','Entregue ao cliente','logistica','Entregue']];
+const FORMAS_CAPA=['Dinheiro','PIX / Depósito','Cartão','Boleto','Cheque','Construcard','Permuta','Doação','Representação','BNDES','Crédito'];
+async function capaPedido(pid){
+  const box=$('#capa_'+pid); if(box.innerHTML){box.innerHTML='';return;}
+  const {data:p}=await sb.from('pedidos').select('*').eq('id',pid).single();
+  const {data:hist}=await sb.from('pedido_historico').select('campo,de,para,em,usuario:usuarios(nome)').eq('pedido_id',pid).order('em',{ascending:false}).limit(20);
+  const {data:us}=await sb.from('usuarios').select('id,nome'); const nomeU=id=>(us||[]).find(u=>u.id===id)?.nome||'';
+  const {data:par}=await sb.from('parametros_loja').select('dias_guarda,regra_armazenagem').eq('loja_id',p.loja_id).maybeSingle();
+  const ed=CAPA.podeEditar, dis=ed?'':'disabled', setor=SETORES.includes(EU.papel)||ehDirecao();
+  const T=(f,lab,tipo='text',extra='')=>`<div><label>${lab}</label><input type="${tipo}" data-t="pedidos" data-f="${f}" data-id="${p.id}" value="${esc(p[f]??'')}" ${dis} ${extra}></div>`;
+  const SIM=(f,lab)=>`<label style="display:flex;gap:6px;align-items:center;color:var(--txt);margin:8px 0 0"><input type="checkbox" style="width:auto" data-t="pedidos" data-f="${f}" data-id="${p.id}" ${p[f]?'checked':''} ${dis}> ${lab}</label>`;
+  const dG=p.guarda_ate?Math.ceil((new Date(p.guarda_ate)-new Date(hoje()))/864e5):null;
+  box.innerHTML=`<div class="card" style="background:#fbfcfe;border:1px solid var(--bd)">
+   <div class="linha" style="justify-content:space-between"><h3 style="margin:0">Capa do pedido ${esc(p.numero_santri)}</h3>
+     <button class="gold" data-exportar="${p.id}">Exportar capa do pedido + capa do atendimento</button></div>
+   <h4>Datas</h4><div class="g3">
+     ${T('data_cliente_precisa','Data que o cliente precisa (limite)','date')}
+     ${T('previsao_entrega','Previsão de entrega','date',p.data_cliente_precisa?`max="${p.data_cliente_precisa}"`:'')}
+     <div><label>Guarda sem custo até</label><div style="padding:9px 0">${p.guarda_ate?`<b>${dBR(p.guarda_ate)}</b> <span class="${dG<0?'atras':'mut'}">(${dG<0?Math.abs(dG)+' dias vencida':dG+' dias'})</span>`:`<span class="mut">conta do fechamento (${dBR(p.data_fechamento)}); regra de guarda ainda não definida em Parâmetros</span>`}</div></div></div>
+   <p class="mut" style="margin:4px 0 0">A previsão de entrega pode ser mudada, mas nunca depois da data que o cliente precisa. Toda mudança fica registrada.</p>
+   <h4>Aprovação e entrega</h4><div class="g3">
+     <div><label>Aprovação do cliente</label><select data-t="pedidos" data-f="aprovacao_cliente" data-id="${p.id}" ${dis}><option value=""></option>${['WhatsApp','Pessoalmente','E-mail'].map(o=>`<option ${o===p.aprovacao_cliente?'selected':''}>${o}</option>`).join('')}</select></div>
+     ${T('oc','OC (ordem de compra do cliente)')}${T('entrega_parcial_aut','Entrega parcial autorizada por')}</div>
+   ${SIM('nf_entrega_futura','Necessita NF de entrega futura')}${SIM('entrega_parcial','Necessita entrega parcial')}
+   <div class="g2" style="margin-top:6px">${T('entrega_endereco','Endereço de entrega')}${T('entrega_contato','Contato na entrega')}${T('entrega_tel','Telefone')}${T('entrega_email','E-mail')}</div>
+   <h4>Financeiro</h4><div class="g3">
+     <div><label>Forma de pagamento</label><select data-t="pedidos" data-f="forma_pagamento_capa" data-id="${p.id}" ${dis}><option value=""></option>${FORMAS_CAPA.map(o=>`<option ${o===p.forma_pagamento_capa?'selected':''}>${o}</option>`).join('')}</select><div class="mut">Santri: ${esc(p.condicao_texto||'')}</div></div>
+     <div><label>Boleto enviado em</label><input type="date" data-t="pedidos" data-f="boleto_enviado_em" data-id="${p.id}" value="${p.boleto_enviado_em||''}" ${setor||ed?'':'disabled'}></div>
+     <div><label>Recebimento confirmado por</label><input data-t="pedidos" data-f="recebimento_confirmado" data-id="${p.id}" value="${esc(p.recebimento_confirmado||'')}" ${setor||ed?'':'disabled'}></div></div>
+   <label>Informações gerais</label><textarea data-t="pedidos" data-f="info_gerais" data-id="${p.id}" style="min-height:60px" ${dis}>${esc(p.info_gerais||p.observacao||'')}</textarea>
+   <label>Observação da logística</label><textarea data-t="pedidos" data-f="obs_logistica" data-id="${p.id}" style="min-height:50px" ${setor||ed?'':'disabled'}>${esc(p.obs_logistica||'')}</textarea>
+   <h4>Andamento</h4><p class="mut" style="margin-top:-6px">Onde está a mercadoria: <b>${esc(p.local_mercadoria)}</b></p>
+   <div class="tbl"><table>${ETAPAS.map(([k,lab,quem])=>`<tr><td>${lab}</td><td>${p[k+'_em']?`✅ ${new Date(p[k+'_em']).toLocaleString('pt-BR')} · ${esc(nomeU(p[k+'_por']))}`:'<span class="mut">pendente</span>'}</td>
+     <td>${(setor||ed)?(p[k+'_em']?`<button class="link" data-etapa="${k}" data-desfaz="1">desfazer</button>`:`<button class="sec" data-etapa="${k}">marcar</button>`):''}</td></tr>`).join('')}</table></div>
+   ${(hist||[]).length?`<details style="margin-top:8px"><summary class="mut">Histórico de mudanças (${hist.length})</summary>${hist.map(h=>`<div class="mut">${new Date(h.em).toLocaleString('pt-BR')} · ${esc(h.usuario?.nome||'')} · ${esc(h.campo.replace(/_/g,' '))}: ${esc(h.de||'—')} → <b>${esc(h.para||'—')}</b></div>`).join('')}</details>`:''}
+  </div>`;
+  ligarCampos(box);
+  box.querySelectorAll('[data-f="data_cliente_precisa"],[data-f="previsao_entrega"]').forEach(el=>el.addEventListener('change',()=>setTimeout(()=>{box.innerHTML='';capaPedido(pid);},600)));
+  box.querySelectorAll('[data-etapa]').forEach(b=>b.onclick=async()=>{const k=b.dataset.etapa, et=ETAPAS.find(e=>e[0]===k);
+    const upd=b.dataset.desfaz?{[k+'_em']:null,[k+'_por']:null}:{[k+'_em']:new Date().toISOString(),[k+'_por']:EU.id};
+    if(!b.dataset.desfaz&&et[3]) upd.local_mercadoria=et[3];
+    if(b.dataset.desfaz&&et[3]){ const ant=[...ETAPAS].slice(0,ETAPAS.indexOf(et)).reverse().find(e=>e[3]&&p[e[0]+'_em']); upd.local_mercadoria=ant?ant[3]:'Aguardando compra'; }
+    const {error}=await sb.from('pedidos').update(upd).eq('id',pid); if(error) return erro(error); toast('Atualizado'); box.innerHTML=''; capaPedido(pid);});
+  box.querySelector('[data-exportar]').onclick=()=>exportarCapas(pid);
+}
+
+// ---------- Exportar: capa do pedido + capa do atendimento (PDF pela impressão) ----------
+async function exportarCapas(pid){
+  const w=window.open('','_blank'); w.document.write('<p style="font-family:Arial">Montando…</p>');
+  const [{data:p},{data:its},{data:vs},{data:nec},{data:chk},{data:pv},{data:orcs},{data:us},{data:escO}]=await Promise.all([
+    sb.from('pedidos').select('*').eq('id',pid).single(), sb.from('pedido_itens').select('*').eq('pedido_id',pid).order('ordem'),
+    sb.from('obra_pessoas').select('papel,decide,pessoa:pessoas(nome,whatsapp,telefone,email,codigo_santri,data_nascimento,cpf_cnpj,escritorio:escritorios(nome))').eq('obra_id',CAPA.ob.id),
+    sb.from('capa_necessidades').select('*').eq('capa_id',CAPA.c.id), sb.from('capa_checklist').select('*').eq('capa_id',CAPA.c.id),
+    sb.from('capa_produtos_vistos').select('*,produto:produtos(nome,marca)').eq('capa_id',CAPA.c.id).order('criado_em'),
+    sb.from('orcamentos').select('numero_santri,versao,momento,status,valor_provavel,data_emissao').eq('capa_id',CAPA.c.id).order('criado_em'),
+    sb.from('usuarios').select('id,nome'), CAPA.ob.escritorio_id?sb.from('escritorios').select('nome').eq('id',CAPA.ob.escritorio_id).maybeSingle():Promise.resolve({data:null})]);
+  const c=CAPA.c, ob=CAPA.ob, nomeU=id=>(us||[]).find(u=>u.id===id)?.nome||'';
+  const cli=(vs||[]).filter(v=>!PAPEL_TIPO[v.papel]), prof=(vs||[]).filter(v=>PAPEL_TIPO[v.papel]);
+  const titular=cli.find(v=>v.papel==='Titular da nota')||cli[0];
+  const arqNome=[escO?.nome,...prof.filter(v=>v.papel==='Arquiteto / designer').map(v=>v.pessoa.nome)].filter(Boolean).join(' / ')||'Sem arquiteto';
+  const chkb=(on,t)=>`<span class="cb">${on?'☒':'☐'} ${t}</span>`;
+  const L=(lab,val)=>`<div class="ln"><b>${lab}</b> ${esc(val??'')||'<span class="br"></span>'}</div>`;
+  const ends=[ob.endereco,ob.bairro,ob.cidade].filter(Boolean).join(', ');
+  const et=ETAPAS.map(([k,lab])=>`<tr><td>${lab}</td><td>${p[k+'_em']?new Date(p[k+'_em']).toLocaleDateString('pt-BR')+' · '+esc(nomeU(p[k+'_por'])):''}</td></tr>`).join('');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Pedido ${esc(p.numero_santri)} - ${esc(titular?.pessoa?.nome||'')}</title><style>
+   body{font-family:Arial,sans-serif;color:#1d2733;font-size:12px;margin:0}.pg{padding:18px 22px;page-break-after:always}.pg:last-child{page-break-after:auto}
+   h1{font-size:18px;color:#1F3A5F;margin:0 0 4px;text-align:center;letter-spacing:1px}h2{font-size:12px;background:#1F3A5F;color:#fff;padding:4px 8px;margin:12px 0 6px}
+   .ln{margin:3px 0}.ln b{color:#444}.br{display:inline-block;min-width:200px;border-bottom:1px solid #999}.cb{margin-right:14px;white-space:nowrap}
+   table{width:100%;border-collapse:collapse}td,th{border:1px solid #ccd;padding:3px 5px;text-align:left;vertical-align:top}th{background:#eef2f7}
+   .g2{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}.ass td{height:34px}.tot{text-align:right;font-weight:bold}.topo{display:flex;justify-content:space-between;border-bottom:2px solid #C9A227;padding-bottom:4px;margin-bottom:6px}
+   @media print{.nao{display:none}}</style></head><body>
+  <div class="nao" style="padding:10px;background:#fffaf0;border-bottom:1px solid #C9A227"><button onclick="print()">Imprimir / salvar PDF</button> Dica: no destino escolha "Salvar como PDF".</div>
+  <div class="pg"><div class="topo"><span>Dom Gabriel Acabamentos · ${esc(LOJAS.find(l=>l.id===p.loja_id)?.nome||'')}</span><span>Capa ${esc(c.numero)} · Pedido ${esc(p.numero_santri)}</span></div>
+   <h1>CAPA DO PEDIDO</h1>
+   <div class="g2">${L('Cliente:',titular?.pessoa?.nome||(p.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,''))}${L('Cód. cliente Santri:',p.cliente_codigo||titular?.pessoa?.codigo_santri)}
+     ${L('Consultor:',p.vendedor_santri)}${L('Data da venda:',dBR(p.data_fechamento))}
+     ${L('Data que o cliente precisa:',dBR(p.data_cliente_precisa))}${L('Previsão de entrega:',dBR(p.previsao_entrega))}
+     ${L('Guarda sem custo até:',dBR(p.guarda_ate))}${L('Valor do pedido:',brl(p.total_pedido))}</div>
+   <div class="ln"><b>Aprovação do cliente:</b> ${chkb(p.aprovacao_cliente==='WhatsApp','WhatsApp')}${chkb(p.aprovacao_cliente==='Pessoalmente','Pessoalmente')}${chkb(p.aprovacao_cliente==='E-mail','E-mail')} <b>OC:</b> ${esc(p.oc||'')||'<span class="br" style="min-width:100px"></span>'}</div>
+   <div class="ln"><b>Necessita NF de entrega futura:</b> ${chkb(p.nf_entrega_futura===true,'Sim')}${chkb(p.nf_entrega_futura!==true,'Não')}
+     <b style="margin-left:10px">Entrega parcial:</b> ${chkb(p.entrega_parcial===true,'Sim')}${chkb(p.entrega_parcial!==true,'Não')} <b>Aut.:</b> ${esc(p.entrega_parcial_aut||'')}</div>
+   ${L('Endereço de entrega:',p.entrega_endereco||ends)}<div class="g2">${L('Contato com:',p.entrega_contato||titular?.pessoa?.nome)}${L('Tel.:',p.entrega_tel||titular?.pessoa?.whatsapp)}${L('E-mail:',p.entrega_email||titular?.pessoa?.email)}</div>
+   <h2>FINANCEIRO</h2>
+   <div class="ln"><b>Forma de pagamento:</b> ${FORMAS_CAPA.map(f=>chkb(p.forma_pagamento_capa===f,f)).join('')}</div>
+   ${L('Condição (Santri):',p.condicao_texto)}<div class="g2">${L('Boleto enviado em:',dBR(p.boleto_enviado_em))}${L('Confirmado recebimento:',p.recebimento_confirmado)}</div>
+   <h2>INFORMAÇÕES GERAIS</h2><div style="white-space:pre-wrap;min-height:40px">${esc(p.info_gerais||p.observacao||'')}</div>
+   <h2>ITENS DO PEDIDO</h2><table><tr><th>Ambiente</th><th>Produto</th><th>Qtd</th><th>Preço un.</th><th>Total</th></tr>
+    ${(its||[]).map(i=>`<tr><td>${esc(i.ambiente||'')}</td><td>${esc(i.descricao)} <span style="color:#777">${esc(i.marca||'')}</span></td><td>${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade||'')}</td><td>${brl(i.preco_unitario)}</td><td>${brl(i.total)}</td></tr>`).join('')}
+    <tr><td colspan="4" class="tot">${p.desconto?'Desconto '+brl(p.desconto)+' · ':''}Total</td><td class="tot">${brl(p.total_pedido)}</td></tr></table>
+   <h2>COMPRAS E LOGÍSTICA</h2><table>${et}</table>
+   ${L('Observação logística:',p.obs_logistica)}
+   <h2>OBSERVAÇÕES | ASSINATURAS</h2><table class="ass"><tr><td style="width:50%"><b>Arquiteta:</b> ${esc(arqNome)}</td><td><b>Consultor:</b></td></tr>
+     <tr><td rowspan="4"></td><td><b>Direção:</b></td></tr><tr><td><b>Financeiro:</b></td></tr><tr><td><b>Projetos:</b></td></tr><tr><td><b>Logística:</b></td></tr></table></div>
+  <div class="pg"><div class="topo"><span>Dom Gabriel Acabamentos</span><span>Capa ${esc(c.numero)} · aberta em ${dBR(c.data_abertura)}</span></div>
+   <h1>CAPA DE ATENDIMENTO</h1>
+   <h2>CLIENTE E FAMÍLIA</h2><table><tr><th>Nome</th><th>Papel</th><th>WhatsApp</th><th>Aniversário</th><th>Cód. Santri</th></tr>${cli.map(v=>`<tr><td>${esc(v.pessoa.nome)}</td><td>${esc(v.papel)}${v.decide?' (decide)':''}</td><td>${esc(v.pessoa.whatsapp||'')}</td><td>${aniv(v.pessoa.data_nascimento)}</td><td>${esc(v.pessoa.codigo_santri||'')}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}</table>
+   <h2>PROFISSIONAIS DA OBRA</h2><div class="g2">${L('Escritório:',escO?.nome)}${prof.map(v=>L(v.papel+':',v.pessoa.nome+(v.pessoa.whatsapp?' · '+v.pessoa.whatsapp:''))).join('')||L('Profissionais:','—')}</div>
+   <h2>OBRA</h2><div class="g2">${L('Endereço:',ends)}${L('Referência:',ob.referencia)}${L('Tipo:',[ob.tipo_obra,ob.construcao_reforma].filter(Boolean).join(' · '))}${L('Etapa:',ob.etapa)}
+     ${L('Área (m²):',ob.area_m2)}${L('Banheiros:',ob.num_banheiros)}${L('Previsão de mudança:',dBR(ob.previsao_mudanca))}${L('Origem:',[c.origem,c.origem_detalhe].filter(Boolean).join(' · '))}</div>
+   <h2>QUALIFICAÇÃO</h2><div class="g2">${L('Investimento:',c.faixa_investimento)}${L('Budget definido:',c.budget_definido)}${L('Pagamento pretendido:',c.pagamento_pretendido)}${L('Prazo de compra:',c.prazo_compra)}
+     ${L('Falou com quem decide:',c.falou_com_decisor==null?'':c.falou_com_decisor?'Sim':'Não')}${L('Decisor:',c.decisor_texto)}${L('Estilo / referências:',c.estilo_referencias)}${L('Influenciadores:',c.influenciadores_texto)}</div>
+   ${(nec||[]).length?`<h2>NECESSIDADES</h2><table><tr><th>Categoria</th><th>Precisa</th><th>Quando</th><th>Status</th><th>Obs.</th></tr>${nec.map(n=>`<tr><td>${esc(n.categoria)}</td><td>${esc(n.precisa??'')}</td><td>${esc(n.quando??'')}</td><td>${esc(n.status??'')}</td><td>${esc(n.observacao??'')}</td></tr>`).join('')}</table>`:''}
+   ${(pv||[]).length?`<h2>PRODUTOS VISTOS</h2><table><tr><th>Produto</th><th>Ambiente</th><th>Reação</th><th>Obs.</th></tr>${pv.map(x=>`<tr><td>${esc(x.produto?.nome||x.descricao_livre)}</td><td>${esc(x.ambiente||'')}</td><td>${esc(x.reacao||'')}</td><td style="white-space:pre-wrap">${esc(x.observacao||'')}</td></tr>`).join('')}</table>`:''}
+   ${(orcs||[]).length?`<h2>ORÇAMENTOS</h2><table><tr><th>Nº</th><th>Momento</th><th>Data</th><th>Status</th><th>Valor provável</th></tr>${orcs.map(o=>`<tr><td>${esc(o.numero_santri)}${o.versao?' v'+esc(o.versao):''}</td><td>${esc(o.momento||'')}</td><td>${dBR(o.data_emissao)}</td><td>${esc(o.status)}</td><td>${brl(o.valor_provavel)}</td></tr>`).join('')}</table>`:''}
+   ${(chk||[]).length?`<h2>CHECKLIST</h2><table>${chk.map(k=>`<tr><td>${k.feito?'☒':'☐'} ${esc(k.acao)}</td><td>${dBR(k.data)}</td><td>${esc(k.observacao||'')}</td></tr>`).join('')}</table>`:''}
+   <h2>PRÓXIMO PASSO</h2>${L('',[c.proximo_passo,dBR(c.proximo_passo_data)].filter(Boolean).join(' · '))}</div>
+  </body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+// ---------- Pedidos: painel de andamento e mercadoria parada ----------
+let PDF_={loja:0,local:'abertos'};
+async function telaPedidos(){
+  let q=sb.from('pedidos').select('id,capa_id,loja_id,numero_santri,cliente_pdf,vendedor_santri,data_fechamento,data_cliente_precisa,previsao_entrega,guarda_ate,local_mercadoria,total_pedido,status,no_deposito_em,na_transportadora_em').neq('status','Cancelado').order('data_fechamento');
+  if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
+  const {data,error}=await q.limit(1000); if(error) return erro(error);
+  const h=hoje(), dias=d=>d?Math.floor((new Date(h)-new Date(d))/864e5):null;
+  const abertos=data.filter(p=>p.local_mercadoria!=='Entregue');
+  const lista=PDF_.local==='abertos'?abertos:PDF_.local==='todos'?data:data.filter(p=>p.local_mercadoria===PDF_.local);
+  const locais=(OP.local_mercadoria&&OP.local_mercadoria.length)?OP.local_mercadoria:['Aguardando compra','Pedido na fábrica','Na transportadora (pátio)','No depósito','Entregue parcial','Entregue'];
+  const soma=l=>abertos.filter(p=>p.local_mercadoria===l).reduce((s,p)=>s+Number(p.total_pedido||0),0);
+  const venc=abertos.filter(p=>p.guarda_ate&&p.guarda_ate<h);
+  const semData=abertos.filter(p=>!p.previsao_entrega);
+  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Pedidos e mercadoria</h2>
+   <div class="card"><div class="g3"><div><label>Loja</label><select id="pdLoja"><option value="0">Todas</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>
+     <div><label>Mostrar</label><select id="pdLocal"><option value="abertos">Não entregues</option>${locais.map(l=>`<option>${esc(l)}</option>`).join('')}<option value="todos">Todos</option></select></div></div></div>
+   <div class="kpis" style="margin-bottom:12px">${locais.filter(l=>l!=='Entregue').map(l=>`<div class="kpi" data-loc="${esc(l)}" style="cursor:pointer"><b>${abertos.filter(p=>p.local_mercadoria===l).length}</b><span>${esc(l)} · ${brl(soma(l))}</span></div>`).join('')}
+     <div class="kpi"><b class="${venc.length?'atras':''}">${venc.length}</b><span>com guarda vencida</span></div><div class="kpi"><b class="${semData.length?'atras':''}">${semData.length}</b><span>sem previsão de entrega</span></div></div>
+   <div class="card"><div class="tbl"><table><tr><th>Pedido</th><th>Cliente</th><th>Consultor</th><th>Fechamento</th><th>Dias</th><th>Onde está</th><th>Cliente precisa</th><th>Previsão entrega</th><th>Guarda até</th><th style="text-align:right">Valor</th></tr>
+   ${lista.map(p=>{const d=dias(p.data_fechamento), gv=p.guarda_ate&&p.guarda_ate<h&&p.local_mercadoria!=='Entregue';
+     return `<tr style="cursor:pointer" data-capa="${p.capa_id}"><td><b>${esc(p.numero_santri)}</b> <span class="mut">${esc(LOJAS.find(l=>l.id===p.loja_id)?.codigo||'')}</span></td><td>${esc((p.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,''))}</td><td>${esc((p.vendedor_santri||'').split(' ')[0])}</td>
+     <td>${dBR(p.data_fechamento)}</td><td class="${d>60&&p.local_mercadoria!=='Entregue'?'atras':''}">${d??''}</td><td>${esc(p.local_mercadoria)}</td><td>${dBR(p.data_cliente_precisa)}</td>
+     <td class="${!p.previsao_entrega&&p.local_mercadoria!=='Entregue'?'atras':''}">${p.previsao_entrega?dBR(p.previsao_entrega):'—'}</td><td class="${gv?'atras':''}">${dBR(p.guarda_ate)}${gv?' (vencida)':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td></tr>`}).join('')||'<tr><td colspan="10" class="mut">Nenhum pedido.</td></tr>'}</table></div>
+   <p class="mut">"Dias" = dias desde o fechamento. Em vermelho: mais de 60 dias sem entregar, sem previsão de entrega ou guarda vencida. Clique para abrir a capa.</p></div>`;
+  $('#pdLoja').value=PDF_.loja; $('#pdLoja').onchange=e=>{PDF_.loja=+e.target.value;telaPedidos();};
+  $('#pdLocal').value=PDF_.local; $('#pdLocal').onchange=e=>{PDF_.local=e.target.value;telaPedidos();};
+  document.querySelectorAll('[data-loc]').forEach(k=>k.onclick=()=>{PDF_.local=k.dataset.loc;telaPedidos();});
+  document.querySelectorAll('[data-capa]').forEach(r=>r.onclick=()=>{abaAtual='ped';location.hash='#/capa/'+r.dataset.capa;});
+}
+
+// ---------- Agenda (entregas previstas, datas-limite e guardas vencendo) ----------
+let AG={mes:null,loja:0};
+async function telaAgenda(){
+  const hj=new Date(hoje()+'T12:00:00'); if(!AG.mes) AG.mes=new Date(hj.getFullYear(),hj.getMonth(),1);
+  const ini=new Date(AG.mes), fim=new Date(ini.getFullYear(),ini.getMonth()+1,0); const iso=d=>d.toISOString().slice(0,10);
+  let q=sb.from('pedidos').select('id,capa_id,loja_id,numero_santri,cliente_pdf,previsao_entrega,data_cliente_precisa,guarda_ate,local_mercadoria,total_pedido').neq('status','Cancelado')
+     .or(`and(previsao_entrega.gte.${iso(ini)},previsao_entrega.lte.${iso(fim)}),and(data_cliente_precisa.gte.${iso(ini)},data_cliente_precisa.lte.${iso(fim)}),and(guarda_ate.gte.${iso(ini)},guarda_ate.lte.${iso(fim)})`);
+  if(AG.loja) q=q.eq('loja_id',AG.loja);
+  const {data,error}=await q.limit(1000); if(error) return erro(error);
+  const ev={}; const add=(d,e)=>{if(!d)return;(ev[d]=ev[d]||[]).push(e);};
+  data.forEach(p=>{const cli=esc((p.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,'').split(' ').slice(0,2).join(' '));
+    if(p.local_mercadoria!=='Entregue'){ add(p.previsao_entrega,`<div class="ev ent" data-capa="${p.capa_id}">🚚 ${esc(p.numero_santri)} ${cli}</div>`);
+      if(p.data_cliente_precisa!==p.previsao_entrega) add(p.data_cliente_precisa,`<div class="ev lim" data-capa="${p.capa_id}">⏰ limite ${esc(p.numero_santri)} ${cli}</div>`);
+      add(p.guarda_ate,`<div class="ev gua" data-capa="${p.capa_id}">📦 guarda ${esc(p.numero_santri)} ${cli}</div>`);}});
+  const nomeMes=ini.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const cel=[]; for(let i=0;i<ini.getDay();i++) cel.push('<div class="dia vazio"></div>');
+  for(let d=1; d<=fim.getDate(); d++){ const k=iso(new Date(ini.getFullYear(),ini.getMonth(),d)); cel.push(`<div class="dia ${k===hoje()?'hoje':''}"><div class="n">${d}</div>${(ev[k]||[]).join('')}</div>`); }
+  $('#conteudo').innerHTML=`<style>.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.cal .cab{font-size:12px;color:var(--mut);text-align:center}.dia{background:#fff;border:1px solid var(--bd);border-radius:6px;min-height:86px;padding:4px;font-size:11px}
+    .dia.vazio{background:transparent;border:none}.dia.hoje{outline:2px solid var(--gold)}.dia .n{font-weight:bold;color:var(--navy)}.ev{border-radius:4px;padding:2px 4px;margin-top:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ev.ent{background:#e3f0ff}.ev.lim{background:#fff1d6}.ev.gua{background:#fde2e2}@media(max-width:700px){.dia{min-height:60px;font-size:10px}}</style>
+   <div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Agenda de entregas</h2>
+     <div class="linha" style="gap:6px"><select id="agLoja" style="width:auto"><option value="0">Todas as lojas</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)}</option>`).join('')}</select>
+     <button class="sec" id="agAnt">‹</button><b style="min-width:150px;text-align:center;text-transform:capitalize">${nomeMes}</b><button class="sec" id="agProx">›</button></div></div>
+   <p class="mut">🚚 previsão de entrega · ⏰ data-limite do cliente · 📦 fim da guarda sem custo. Clique para abrir a capa.</p>
+   <div class="cal">${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div class="cab">${d}</div>`).join('')}${cel.join('')}</div>`;
+  $('#agLoja').value=AG.loja; $('#agLoja').onchange=e=>{AG.loja=+e.target.value;telaAgenda();};
+  $('#agAnt').onclick=()=>{AG.mes=new Date(ini.getFullYear(),ini.getMonth()-1,1);telaAgenda();}; $('#agProx').onclick=()=>{AG.mes=new Date(ini.getFullYear(),ini.getMonth()+1,1);telaAgenda();};
+  document.querySelectorAll('.ev[data-capa]').forEach(e=>e.onclick=()=>{abaAtual='ped';location.hash='#/capa/'+e.dataset.capa;});
 }
 
 // ---------- Condições de pagamento do Santri (de-para para a taxa que a loja paga) ----------
