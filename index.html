@@ -951,7 +951,7 @@ async function lerPedido(file){
     <div id="pCondObs"></div><div id="pRes" style="margin-top:10px"></div>
     <div class="linha" style="margin-top:10px"><button class="gold" id="pSalvar">Confirmar pedido</button><button class="sec" id="pCanc">Cancelar</button></div></div>`;
   const pn=v=>{v=String(v||'').trim(); if(!v) return null; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); const n=Number(v.replace('%','')); return isNaN(n)?null:n;};
-  const preencherMod=(sel)=>{const b=$('#pBand').value; const ms=PED.tx.filter(t=>t.bandeira===b).map(t=>t.modalidade); $('#pMod').innerHTML=ms.map(m=>`<option ${m===sel?'selected':''}>${esc(m)}</option>`).join('');};
+  const preencherMod=(sel)=>{const b=$('#pBand').value; const ms=PED.tx.filter(t=>t.bandeira===b).map(t=>t.modalidade); $('#pMod').innerHTML=ms.map(m=>`<option ${m===sel?'selected':''}>${esc(m)}</option>`).join(''); $('#pModBox').classList.toggle('hide',!ms.length);};
   const aplicarCond=()=>{ const cd=PED.conds.find(x=>String(x.codigo)===$('#pCond').value);
     const usaTab=cd&&cd.bandeira; $('#pBand').value=usaTab?cd.bandeira:(cd&&cd.forma==='avista'?'':$('#pBand').value); preencherMod(cd?.modalidade);
     $('#pEntBox').classList.toggle('hide',!(cd&&cd.tem_entrada));
@@ -1200,10 +1200,10 @@ async function listaProf(){
 
 // ---------- Conferência de ST (Santri × lista de NCM do planilhão) ----------
 const SIT_ST=['ST com % diferente','NCM de ST, Santri sem ST','ST no Santri, NCM fora da lista','Próximo (até 0,25 p.p.)','OK – ST confere','OK – não é ST'];
-let CST={loja:1,sit:'ST com % diferente',busca:''};
+let CST={loja:1,sit:'ST com % diferente',busca:'',meses:12};
 async function telaConfST(){
   if(!ehDirecao()) return telaLista();
-  const [{data:res,error},{data:ncm},{data:parl}]=await Promise.all([sb.rpc('resumo_conferencia_st',{p_loja:CST.loja}),sb.from('ncm_st').select('*').eq('loja_id',CST.loja).eq('ativo',true).order('ncm_prefixo'),sb.from('parametros_loja').select('icms_debito').eq('loja_id',CST.loja).maybeSingle()]);
+  const [{data:res,error},{data:ncm},{data:parl}]=await Promise.all([sb.rpc('resumo_conferencia_st',{p_loja:CST.loja,p_meses:CST.meses||null}),sb.from('ncm_st').select('*').eq('loja_id',CST.loja).eq('ativo',true).order('ncm_prefixo'),sb.from('parametros_loja').select('icms_debito').eq('loja_id',CST.loja).maybeSingle()]);
   const icmsInt=Number(parl?.icms_debito||0.17); const p2=v=>(Number(v)*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%';
   if(error) return erro(error);
   const tot=Object.values(res||{}).reduce((a,b)=>a+b,0);
@@ -1212,7 +1212,9 @@ async function telaConfST(){
   <div class="card"><div class="g3">
     <div><label>Loja</label><select id="cLoja">${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>
     <div><label>Buscar (nome, marca, código, NCM)</label><input id="cBusca" value="${esc(CST.busca)}"></div>
-    <div style="align-self:end"><button class="sec" id="cCsv">Baixar lista (Excel/CSV)</button></div></div></div>
+    <div><label>Produtos</label><select id="cMeses"><option value="12">Só com preço formado nos últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="0">Todos (inclui os que só estão cadastrados)</option></select></div>
+    <div style="align-self:end"><button class="sec" id="cCsv">Baixar lista (Excel/CSV)</button></div></div>
+    <p class="mut" style="margin-top:6px">Muitos produtos aparecem em PVA só porque foram cadastrados para RV, sem formação de preço feita em PVA — por isso o padrão é olhar só os com preço formado recentemente.</p></div>
   ${tot?'':'<div class="aviso">Nenhum preço importado para esta loja ainda. Importe a Formação de Custo e Preço na Importadora.</div>'}
   <div class="kpis" style="margin-bottom:12px">${SIT_ST.map(k=>`<div class="kpi" data-sit="${esc(k)}" style="cursor:pointer;${CST.sit===k?'outline:2px solid var(--gold)':''}"><b class="${k.startsWith('OK')?'':'atras'}">${Number(res?.[k]||0).toLocaleString('pt-BR')}</b><span>${esc(k)}</span></div>`).join('')}</div>
   <div class="card"><h3>${esc(CST.sit)}</h3><div class="tbl" id="cLista"><p class="mut">Carregando…</p></div></div>
@@ -1220,7 +1222,7 @@ async function telaConfST(){
     <div class="tbl"><table><tr><th>NCM (começa com)</th><th>MVA</th><th>%ST esperado (nota com 7%)</th><th>Obs.</th></tr>${(ncm||[]).map(n=>`<tr><td>${esc(n.ncm_prefixo)}</td><td>${p2(n.mva)}</td><td>${p2((1+Number(n.mva))*icmsInt-0.07)}</td><td class="mut">${esc(n.observacao||'')}</td></tr>`).join('')}</table></div>
     <p class="mut">Para atualizar: cole a lista inteira abaixo (uma linha por NCM: <code>NCM;MVA</code>, MVA em % ou decimal, ex.: <code>6907;46,15</code>). Substitui a lista desta loja.</p>
     <textarea id="ncmCola" style="min-height:120px"></textarea><button class="gold" id="ncmSubst" style="margin-top:8px">Substituir lista de NCM</button></details></div>`;
-  $('#cLoja').value=CST.loja; $('#cLoja').onchange=e=>{CST.loja=+e.target.value;telaConfST();};
+  $('#cLoja').value=CST.loja; $('#cMeses').value=String(CST.meses||0); $('#cMeses').onchange=e=>{CST.meses=+e.target.value;telaConfST();}; $('#cLoja').onchange=e=>{CST.loja=+e.target.value;telaConfST();};
   document.querySelectorAll('[data-sit]').forEach(k=>k.onclick=()=>{CST.sit=k.dataset.sit;telaConfST();});
   let t; $('#cBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CST.busca=e.target.value;listaConfST();},300)};
   $('#cCsv').onclick=csvConfST;
@@ -1235,6 +1237,7 @@ async function telaConfST(){
   listaConfST();
 }
 function qConfST(){ let q=sb.from('vw_conferencia_st').select('produto_id,nome,marca,ncm,ativo,pct_st,tipo_st,mva,st_esperado_7,st_esperado_12,diferenca_pp,preco_tabela_fabrica,data_preco,situacao').eq('loja_id',CST.loja).eq('situacao',CST.sit);
+  if(CST.meses){const d=new Date();d.setMonth(d.getMonth()-CST.meses);q=q.gte('data_preco',d.toISOString().slice(0,10));}
   const b=CST.busca.trim().replace(/[%_,()]/g,''); if(b) q=/^\d+$/.test(b)?q.or(`produto_id.eq.${b},ncm.like.${b}*`):q.or(`nome.ilike.*${b}*,marca.ilike.*${b}*`); return q; }
 async function listaConfST(){
   const {data,error}=await qConfST().order('marca').order('nome').limit(300); if(error) return erro(error);
