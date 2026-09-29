@@ -286,8 +286,8 @@ async function enviarStaging(){
 
 async function previa(){
   const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':'previa_importacao_produtos',{p_importacao:importacaoId});
-  if(error) return msg('previaMsgs','Erro na prévia: '+error.message,'err');
   $('passoPrevia').classList.remove('hide');
+  if(error){ $('kpis').innerHTML=''; return msg('previaMsgs','Erro na prévia: '+error.message+' — tente de novo; se repetir, avise o Claude com um print desta tela.','err'); }
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
   const pr=TIPO()==='precos'; $('inativar').parentElement.classList.toggle('hide',pr); $('btnPendencias').classList.toggle('hide',pr);
   if(pr){ $('kpis').innerHTML=k(data.no_arquivo,'preços no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.sem_preco_tabela,'sem preço de fábrica')+k(data.sem_cadastro,'sem cadastro de produto (ignorados)'); $('previaMsgs').innerHTML=''; msg('previaMsgs',`Loja: <b>${data.loja_id==1?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Confira se é a loja certa antes de gravar.`,'info'); return; }
