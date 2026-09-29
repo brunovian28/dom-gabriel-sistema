@@ -1,6 +1,11 @@
-# Dom Gabriel · Sistema interno
+# Dom Gabriel — Sistema interno
 
-- index.html: sistema (Capas de Atendimento)
-- importadora.html: importação dos relatórios do Santri
+## Links (salve nos favoritos)
+- **Sistema (capas, negociação, parâmetros, conferência de ST):** https://brunovian28.github.io/dom-gabriel-sistema/
+- **Importadora (só direção):** https://brunovian28.github.io/dom-gabriel-sistema/importadora.html
 
-Dados no Supabase (projeto dom-gabriel-sistema), protegidos por login e permissões.
+## Arquivos
+- `index.html` — sistema
+- `importadora.html` — importação dos relatórios do Santri (produtos, preços por loja)
+
+Banco de dados: Supabase (projeto dom-gabriel-sistema). Acesso só com usuário aprovado pela direção.

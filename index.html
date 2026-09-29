@@ -126,7 +126,7 @@ sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
 function montarMenu(){
-  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros']);
+  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/conferencia-st','Conferência de ST']);
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
@@ -138,6 +138,7 @@ function rota(){
   if(h==='#/nova') return novaCapa();
   if(h==='#/usuarios') return telaUsuarios();
   if(h==='#/parametros') return telaParametros();
+  if(h==='#/conferencia-st') return telaConfST();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -760,7 +761,7 @@ async function recalc(){
   const {data:mes}=await sb.rpc('mc_do_mes',{p_loja:CAPA.c.loja_id});
   const pe=mes?.pe_mc_mensal||0, fech=Number(mes?.mc_fechada||0), falta=Math.max(pe-fech,0);
   const lin=(t,v,neg=true)=>`<tr><td>${t}</td><td style="text-align:right">${neg&&v?'− ':''}${brl(v)}</td><td style="text-align:right" class="mut">${r.receita?pct(v/r.receita):''}</td></tr>`;
-  $('#ngRes').innerHTML=`<h3>Resultado da venda</h3>
+  $('#ngRes').innerHTML=`<h3>Resultado da venda <span class="mut" style="font-weight:normal;font-size:13px">· preços, impostos e taxas da loja ${esc(LOJAS.find(l=>l.id===CAPA.c.loja_id)?.codigo||'')}</span></h3>
     <div class="kpis"><div class="kpi"><b>${brl(r.receita)}</b><span>valor da venda</span></div>
       <div class="kpi"><b style="color:${cor}">${brl(r.mc)}</b><span>margem de contribuição</span></div>
       <div class="kpi"><b style="color:${cor}">${pct(r.mc_pct)}</b><span>MC %</span></div>
@@ -850,6 +851,63 @@ async function telaParametros(){
     if(!confirm(`Substituir todas as taxas por ${regs.length} linhas?`)) return;
     const {error:e1}=await sb.from('taxas_cartao').update({ativo:false}).eq('ativo',true); if(e1) return erro(e1);
     const {error:e2}=await sb.from('taxas_cartao').insert(regs); if(e2) return erro(e2); toast(regs.length+' taxas cadastradas'); telaParametros(); };
+}
+
+// ---------- Conferência de ST (Santri × lista de NCM do planilhão) ----------
+const SIT_ST=['ST com % diferente','NCM de ST, Santri sem ST','ST no Santri, NCM fora da lista','Próximo (até 0,25 p.p.)','OK – ST confere','OK – não é ST'];
+let CST={loja:1,sit:'ST com % diferente',busca:''};
+async function telaConfST(){
+  if(!ehDirecao()) return telaLista();
+  const [{data:res,error},{data:ncm},{data:parl}]=await Promise.all([sb.rpc('resumo_conferencia_st',{p_loja:CST.loja}),sb.from('ncm_st').select('*').eq('loja_id',CST.loja).eq('ativo',true).order('ncm_prefixo'),sb.from('parametros_loja').select('icms_debito').eq('loja_id',CST.loja).maybeSingle()]);
+  const icmsInt=Number(parl?.icms_debito||0.17); const p2=v=>(Number(v)*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%';
+  if(error) return erro(error);
+  const tot=Object.values(res||{}).reduce((a,b)=>a+b,0);
+  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Conferência de ST</h2>
+  <p class="mut">Compara o %ST cadastrado no Santri (arquivo de Formação de Preço importado) com a lista de NCMs de ST do planilhão. %ST esperado = (1 + MVA) × ICMS interno da loja − 7% (ou 12%) de ICMS da nota.</p>
+  <div class="card"><div class="g3">
+    <div><label>Loja</label><select id="cLoja">${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>
+    <div><label>Buscar (nome, marca, código, NCM)</label><input id="cBusca" value="${esc(CST.busca)}"></div>
+    <div style="align-self:end"><button class="sec" id="cCsv">Baixar lista (Excel/CSV)</button></div></div></div>
+  ${tot?'':'<div class="aviso">Nenhum preço importado para esta loja ainda. Importe a Formação de Custo e Preço na Importadora.</div>'}
+  <div class="kpis" style="margin-bottom:12px">${SIT_ST.map(k=>`<div class="kpi" data-sit="${esc(k)}" style="cursor:pointer;${CST.sit===k?'outline:2px solid var(--gold)':''}"><b class="${k.startsWith('OK')?'':'atras'}">${Number(res?.[k]||0).toLocaleString('pt-BR')}</b><span>${esc(k)}</span></div>`).join('')}</div>
+  <div class="card"><h3>${esc(CST.sit)}</h3><div class="tbl" id="cLista"><p class="mut">Carregando…</p></div></div>
+  <div class="card"><details><summary><b>NCMs com ST desta loja (${(ncm||[]).length})</b> — lista usada na conferência</summary>
+    <div class="tbl"><table><tr><th>NCM (começa com)</th><th>MVA</th><th>%ST esperado (nota com 7%)</th><th>Obs.</th></tr>${(ncm||[]).map(n=>`<tr><td>${esc(n.ncm_prefixo)}</td><td>${p2(n.mva)}</td><td>${p2((1+Number(n.mva))*icmsInt-0.07)}</td><td class="mut">${esc(n.observacao||'')}</td></tr>`).join('')}</table></div>
+    <p class="mut">Para atualizar: cole a lista inteira abaixo (uma linha por NCM: <code>NCM;MVA</code>, MVA em % ou decimal, ex.: <code>6907;46,15</code>). Substitui a lista desta loja.</p>
+    <textarea id="ncmCola" style="min-height:120px"></textarea><button class="gold" id="ncmSubst" style="margin-top:8px">Substituir lista de NCM</button></details></div>`;
+  $('#cLoja').value=CST.loja; $('#cLoja').onchange=e=>{CST.loja=+e.target.value;telaConfST();};
+  document.querySelectorAll('[data-sit]').forEach(k=>k.onclick=()=>{CST.sit=k.dataset.sit;telaConfST();});
+  let t; $('#cBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CST.busca=e.target.value;listaConfST();},300)};
+  $('#cCsv').onclick=csvConfST;
+  $('#ncmSubst').onclick=async()=>{
+    const regs=$('#ncmCola').value.split(/\r?\n/).map(l=>l.split(/;|\t/).map(x=>x.trim())).filter(l=>l.length>=2&&/^\d{2,8}$/.test(l[0].replace(/\./g,'')))
+      .map(([n,m])=>{let v=Number(String(m).replace('%','').replace(',','.'));if(String(m).includes('%')||v>3)v=v/100;return {loja_id:CST.loja,ncm_prefixo:n.replace(/\./g,''),mva:v};});
+    if(!regs.length) return toast('Nenhuma linha válida');
+    const uniq=Object.values(Object.fromEntries(regs.map(r=>[r.ncm_prefixo,r])));
+    if(!confirm(`Substituir a lista de NCM desta loja por ${uniq.length} NCMs?`)) return;
+    const {error:e1}=await sb.from('ncm_st').delete().eq('loja_id',CST.loja); if(e1) return erro(e1);
+    const {error:e2}=await sb.from('ncm_st').insert(uniq); if(e2) return erro(e2); toast(uniq.length+' NCMs cadastrados'); telaConfST();};
+  listaConfST();
+}
+function qConfST(){ let q=sb.from('vw_conferencia_st').select('produto_id,nome,marca,ncm,ativo,pct_st,tipo_st,mva,st_esperado_7,st_esperado_12,diferenca_pp,preco_tabela_fabrica,data_preco,situacao').eq('loja_id',CST.loja).eq('situacao',CST.sit);
+  const b=CST.busca.trim().replace(/[%_,()]/g,''); if(b) q=/^\d+$/.test(b)?q.or(`produto_id.eq.${b},ncm.like.${b}*`):q.or(`nome.ilike.*${b}*,marca.ilike.*${b}*`); return q; }
+async function listaConfST(){
+  const {data,error}=await qConfST().order('marca').order('nome').limit(300); if(error) return erro(error);
+  $('#cLista').innerHTML=data.length?`<table><tr><th>Cód.</th><th>Produto</th><th>Marca</th><th>NCM</th><th>%ST Santri</th><th>%ST esperado</th><th>Diferença</th><th>Data preço</th></tr>
+   ${data.map(r=>`<tr><td>${r.produto_id}</td><td>${esc(r.nome)}${r.ativo?'':' <span class="mut">(inativo)</span>'}</td><td>${esc(r.marca||'')}</td><td>${esc(r.ncm||'')}</td>
+     <td>${r.pct_st!=null?Number(r.pct_st).toLocaleString('pt-BR',{maximumFractionDigits:4})+'%':'—'}</td>
+     <td>${r.st_esperado_7!=null?Number(r.st_esperado_7).toLocaleString('pt-BR',{maximumFractionDigits:4})+'%':'—'}</td>
+     <td>${r.diferenca_pp!=null?(r.diferenca_pp>0?'+':'')+Number(r.diferenca_pp).toLocaleString('pt-BR',{maximumFractionDigits:2})+' p.p.':''}</td><td>${r.data_preco?dBR(r.data_preco):''}</td></tr>`).join('')}</table>
+   ${data.length===300?'<p class="mut">Mostrando os 300 primeiros. Baixe a lista para ver todos.</p>':''}`:'<p class="mut">Nenhum item nesta situação.</p>';
+}
+async function csvConfST(){
+  toast('Gerando lista…'); let tudo=[];
+  for(let i=0;;i+=1000){ const {data,error}=await qConfST().order('produto_id').range(i,i+999); if(error) return erro(error); tudo=tudo.concat(data); if(data.length<1000) break; }
+  const n=v=>v==null?'':String(v).replace('.',',');
+  const csv=['Código;Produto;Marca;NCM;Ativo;%ST Santri;Tipo ST;MVA planilhão;%ST esperado (7%);%ST esperado (12%);Diferença p.p.;Preço tabela;Data preço;Situação']
+    .concat(tudo.map(r=>[r.produto_id,`"${(r.nome||'').replace(/"/g,'""')}"`,r.marca||'',r.ncm||'',r.ativo?'Sim':'Não',n(r.pct_st),r.tipo_st||'',n(r.mva),n(r.st_esperado_7),n(r.st_esperado_12),n(r.diferenca_pp),n(r.preco_tabela_fabrica),r.data_preco||'',r.situacao].join(';'))).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));
+  a.download=`conferencia_st_${LOJAS.find(l=>l.id===CST.loja)?.codigo}_${CST.sit.replace(/[^\wÀ-ú]+/g,'_')}.csv`; a.click();
 }
 
 // ---------- Linha do tempo ----------
