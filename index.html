@@ -126,7 +126,7 @@ sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
 function montarMenu(){
-  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/conferencia-st','Conferência de ST']);
+  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/conferencia-st','Conferência de ST']);
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
@@ -139,6 +139,7 @@ function rota(){
   if(h==='#/usuarios') return telaUsuarios();
   if(h==='#/parametros') return telaParametros();
   if(h==='#/conferencia-st') return telaConfST();
+  if(h==='#/profissionais') return telaProfissionais();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -255,9 +256,9 @@ function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:aba
 // ---------- Quem e onde ----------
 async function abaQuem(){
   const {c,ob,podeEditar}=CAPA; const dis=podeEditar?'':'disabled';
-  const {data:vs}=await sb.from('obra_pessoas').select('papel,decide,pessoa:pessoas(*)').eq('obra_id',ob.id);
-  $('#aba').innerHTML=`
-  <div class="card"><h3>Pessoas da obra</h3>
+  const {data:vs0}=await sb.from('obra_pessoas').select('papel,decide,pessoa:pessoas(*)').eq('obra_id',ob.id); const vs=(vs0||[]).filter(v=>!PAPEL_TIPO[v.papel]);
+  $('#aba').innerHTML=`<div id="profObra"></div>
+  <div class="card"><h3>Cliente e família</h3><p class="mut" style="margin-top:-6px">Titular da nota, quem decide e quem influencia. Arquiteto, construtor e mestre de obras ficam no quadro acima.</p>
     <div class="tbl"><table><tr><th>Nome</th><th>WhatsApp</th><th>Papel</th><th>Decide?</th><th>Cód. Santri</th><th></th></tr>
     ${(vs||[]).map(v=>`<tr><td><input data-t="pessoas" data-f="nome" data-id="${v.pessoa.id}" value="${esc(v.pessoa.nome)}" ${dis}></td>
       <td><input data-t="pessoas" data-f="whatsapp" data-id="${v.pessoa.id}" value="${esc(v.pessoa.whatsapp)}" ${dis}></td>
@@ -267,7 +268,7 @@ async function abaQuem(){
     </table></div>
     ${podeEditar?`<div class="card" style="background:#fafbfc;margin-top:12px"><b>Adicionar pessoa</b>
       <div class="g3"><div><label>Buscar pelo nome ou WhatsApp</label><input id="pBusca" placeholder="digite para buscar ou cadastrar"></div>
-      <div><label>Papel na obra</label>${sel('papel_obra','','id="pPapel"')}</div>
+      <div><label>Papel na obra</label><select id="pPapel"><option value=""></option>${(OP.papel_obra||[]).filter(v=>!PAPEL_TIPO[v]).map(v=>`<option>${esc(v)}</option>`).join('')}</select></div>
       <div><label>Decide a compra?</label><select id="pDecide"><option value="false">Não</option><option value="true">Sim</option></select></div></div>
       <div id="pSug" class="sug hide" style="margin-top:6px"></div></div>`:''}
   </div>
@@ -290,7 +291,7 @@ async function abaQuem(){
     <div><label>Tipo de entrada</label>${sel('tipo_entrada',c.tipo_entrada,`data-t="capas" data-f="tipo_entrada" ${dis}`)}</div>
     <div><label>Origem do cliente</label>${sel('origem',c.origem,`data-t="capas" data-f="origem" ${dis}`)}</div></div>
     <label>Detalhe da origem</label><input data-t="capas" data-f="origem_detalhe" value="${esc(c.origem_detalhe)}" ${dis}></div>`;
-  ligarCampos($('#aba'));
+  ligarCampos($('#aba')); montarProfObra();
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{const [pid,papel]=b.dataset.rm.split('|');if(!confirm('Remover esta pessoa da obra?'))return;
     const {error}=await sb.from('obra_pessoas').delete().eq('obra_id',ob.id).eq('pessoa_id',pid).eq('papel',papel);if(error)return erro(error);abaQuem();});
   if($('#gps')) $('#gps').onclick=()=>navigator.geolocation.getCurrentPosition(async p=>{
@@ -684,7 +685,7 @@ async function abaNegoc(){
   const {data:negs}=await sb.from('negociacoes').select('id,status,resultado,entrada,criado_em,atualizado_em,orcamento_id').eq('capa_id',CAPA.c.id).order('atualizado_em',{ascending:false});
   const {data:arq}=await sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id).eq('papel','Arquiteto / designer');
   const {data:tx}=await sb.from('taxas_cartao').select('bandeira,modalidade,taxa').eq('ativo',true).order('id');
-  NEG={orcs:(os||[]).filter(o=>o.lido_do_pdf), negs:negs||[], temArq:(arq||[]).length>0, taxas:tx||[], itens:[], id:null};
+  NEG={orcs:(os||[]).filter(o=>o.lido_do_pdf), negs:negs||[], temArq:(arq||[]).length>0||!!CAPA.ob?.escritorio_id, taxas:tx||[], itens:[], id:null};
   if(!NEG.orcs.length){ $('#aba').innerHTML='<div class="card"><p class="mut">Suba primeiro um orçamento em PDF na aba Orçamentos. A negociação parte dos itens dele.</p></div>'+listaNegs(); return; }
   const band=[...new Set(NEG.taxas.map(t=>t.bandeira))];
   $('#aba').innerHTML=`
@@ -867,6 +868,167 @@ async function telaParametros(){
     if(!confirm(`Substituir todas as taxas por ${regs.length} linhas?`)) return;
     const {error:e1}=await sb.from('taxas_cartao').update({ativo:false}).eq('ativo',true); if(e1) return erro(e1);
     const {error:e2}=await sb.from('taxas_cartao').insert(regs); if(e2) return erro(e2); toast(regs.length+' taxas cadastradas'); telaParametros(); };
+}
+
+// ---------- Profissionais (arquitetos, escritórios, construtores, mestres de obras) ----------
+const PROF={
+  arq:{titulo:'Arquiteto(a) / designer',plural:'Arquitetos e designers',papel:'Arquiteto / designer',profs:['Arquiteto(a)','Designer de interiores']},
+  cons:{titulo:'Construtor / engenheiro',plural:'Construtores e engenheiros',papel:'Construtor',profs:['Construtor(a)','Engenheiro(a)']},
+  mestre:{titulo:'Mestre de obras',plural:'Mestres de obras',papel:'Mestre de obras',profs:['Mestre de obras']}
+};
+const PAPEL_TIPO={'Arquiteto / designer':'arq','Construtor':'cons','Engenheiro':'cons','Mestre de obras':'mestre'};
+const aniv=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
+async function montarProfObra(){
+  const box=$('#profObra'); if(!box) return; const {ob,podeEditar}=CAPA;
+  const [{data:vs},{data:escO}]=await Promise.all([
+    sb.from('obra_pessoas').select('papel,pessoa:pessoas(id,nome,whatsapp,profissao,data_nascimento,escritorio:escritorios(id,nome))').eq('obra_id',ob.id).in('papel',[...Object.keys(PAPEL_TIPO)]),
+    ob.escritorio_id?sb.from('escritorios').select('id,nome,telefone').eq('id',ob.escritorio_id).maybeSingle():Promise.resolve({data:null})]);
+  const chips=t=>(vs||[]).filter(v=>PAPEL_TIPO[v.papel]===t).map(v=>`<span class="pill" style="display:inline-flex;gap:6px;align-items:center;margin:2px 4px 2px 0;background:#eef2f7;color:var(--navy);padding:4px 10px">
+     <a href="#" data-editp="${v.pessoa.id}" style="color:var(--navy)"><b>${esc(v.pessoa.nome)}</b></a>${v.pessoa.escritorio?` <span class="mut">· ${esc(v.pessoa.escritorio.nome)}</span>`:''}${v.pessoa.whatsapp?` <span class="mut">· ${esc(v.pessoa.whatsapp)}</span>`:''}
+     ${podeEditar?`<button class="link" title="tirar da obra" data-rmprof="${v.pessoa.id}|${esc(v.papel)}" style="color:#b33;padding:0 2px">✕</button>`:''}</span>`).join('')||'<span class="mut">—</span>';
+  const busca=(k,ph)=>podeEditar?`<div style="margin-top:6px;position:relative"><input data-bprof="${k}" placeholder="${ph}"><div class="sug hide" data-sprof="${k}"></div></div>`:'';
+  box.innerHTML=`<div class="card"><h3>Profissionais da obra</h3>
+    <div class="g2">
+      <div><label>Escritório de arquitetura</label>
+        <div>${escO?`<span class="pill" style="background:#fff7e0;color:var(--navy);padding:4px 10px"><a href="#" data-editesc="${escO.id}" style="color:var(--navy)"><b>${esc(escO.nome)}</b></a>
+          ${podeEditar?`<button class="link" data-rmesc="1" style="color:#b33;padding:0 2px">✕</button>`:''}</span>`:'<span class="mut">—</span>'}</div>
+        ${busca('escr','buscar escritório ou cadastrar novo')}</div>
+      <div><label>${PROF.arq.titulo}</label><div>${chips('arq')}</div>${busca('arq','buscar arquiteto(a) ou cadastrar novo')}</div>
+      <div><label>${PROF.cons.titulo}</label><div>${chips('cons')}</div>${busca('cons','buscar construtor ou cadastrar novo')}</div>
+      <div><label>${PROF.mestre.titulo}</label><div>${chips('mestre')}</div>${busca('mestre','buscar mestre de obras ou cadastrar novo')}</div>
+    </div><p class="mut" style="margin-top:8px">Clique no nome para ver ou completar o cadastro (aniversário, escritório, Instagram…). A lista completa fica em <a href="#/profissionais">Profissionais</a>.</p></div>`;
+  box.querySelectorAll('[data-bprof]').forEach(inp=>{let t; inp.oninput=()=>{clearTimeout(t);t=setTimeout(()=>sugProf(inp.dataset.bprof,inp.value,box.querySelector(`[data-sprof="${inp.dataset.bprof}"]`),async(item)=>{
+      if(inp.dataset.bprof==='escr'){ const {error}=await sb.from('obras').update({escritorio_id:item.id}).eq('id',ob.id); if(error) return erro(error); CAPA.ob.escritorio_id=item.id; }
+      else await vincularProf(inp.dataset.bprof,item);
+      montarProfObra();}),300);};});
+  box.querySelectorAll('[data-rmprof]').forEach(b=>b.onclick=async()=>{const [pid,papel]=b.dataset.rmprof.split('|'); if(!confirm('Tirar este profissional da obra? (o cadastro dele continua)'))return;
+    const {error}=await sb.from('obra_pessoas').delete().eq('obra_id',ob.id).eq('pessoa_id',pid).eq('papel',papel); if(error) return erro(error); montarProfObra();});
+  const rmE=box.querySelector('[data-rmesc]'); if(rmE) rmE.onclick=async()=>{ if(!confirm('Tirar o escritório desta obra?'))return; await sb.from('obras').update({escritorio_id:null}).eq('id',ob.id); CAPA.ob.escritorio_id=null; montarProfObra(); };
+  box.querySelectorAll('[data-editp]').forEach(a=>a.onclick=e=>{e.preventDefault(); formProf({id:a.dataset.editp},()=>montarProfObra());});
+  box.querySelectorAll('[data-editesc]').forEach(a=>a.onclick=e=>{e.preventDefault(); formEscr({id:a.dataset.editesc},()=>montarProfObra());});
+}
+async function vincularProf(tipo,p){
+  const {error}=await sb.from('obra_pessoas').insert({obra_id:CAPA.ob.id,pessoa_id:p.id,papel:PROF[tipo].papel,decide:false});
+  if(error&&!/duplicate/i.test(error.message)) return erro(error);
+  // arquiteta de escritório: se a obra ainda não tem escritório, já vincula
+  if(tipo==='arq'&&p.escritorio_id&&!CAPA.ob.escritorio_id){ await sb.from('obras').update({escritorio_id:p.escritorio_id}).eq('id',CAPA.ob.id); CAPA.ob.escritorio_id=p.escritorio_id; }
+  toast('Vinculado à obra');
+}
+async function sugProf(tipo,txt,box,onPick,opts={}){
+  txt=(txt||'').trim(); if(txt.length<2){box.classList.add('hide');return;}
+  const t=txt.replace(/[%,()]/g,''), dig=txt.replace(/\D/g,'');
+  let data;
+  if(tipo==='escr'){ ({data}=await sb.from('escritorios').select('id,nome,cidade').ilike('nome','%'+t+'%').eq('ativo',true).order('nome').limit(8)); }
+  else { let q=sb.from('pessoas').select('id,nome,whatsapp,profissao,escritorio_id,escritorio:escritorios(nome)').eq('profissional',true).in('profissao',PROF[tipo].profs).order('nome').limit(8);
+    q=dig.length>=4?q.or(`whatsapp.ilike.*${dig}*,nome.ilike.*${t}*`):q.ilike('nome','%'+t+'%'); ({data}=await q); }
+  box.classList.remove('hide');
+  box.innerHTML=(data||[]).map((p,i)=>`<div data-i="${i}"><b>${esc(p.nome)}</b> <span class="mut">${esc(p.profissao||p.cidade||'')}${p.escritorio?' · '+esc(p.escritorio.nome):''}${p.whatsapp?' · '+esc(p.whatsapp):''}</span></div>`).join('')
+    +`<div data-novo="1" style="color:var(--navy)"><b>+ Novo cadastro:</b> ${esc(txt)}</div>`;
+  box.querySelectorAll('[data-i]').forEach(d=>d.onclick=()=>{box.classList.add('hide');onPick(data[+d.dataset.i]);});
+  box.querySelector('[data-novo]').onclick=async()=>{box.classList.add('hide');
+    if(opts.criarDireto){ const {data:n,error}=await sb.from('escritorios').insert({nome:txt,criado_por:EU.id,loja_id:EU.loja_id}).select().single(); if(error) return toast(/unique|duplicate/i.test(error.message)?'Já existe um escritório com esse nome':'Erro: '+error.message); return onPick(n); }
+    tipo==='escr'?formEscr({nome:txt},onPick):formProf({nome:txt,tipo},onPick);};
+}
+async function formProf(ini,onSaved){
+  let p=ini.id?(await sb.from('pessoas').select('*,escritorio:escritorios(id,nome)').eq('id',ini.id).single()).data:{nome:ini.nome||'',profissional:true,profissao:(PROF[ini.tipo]?.profs||[])[0]||''};
+  const ehNum=!ini.id&&/^\+?[\d\s()-]{8,}$/.test(p.nome); if(ehNum){p.whatsapp=p.nome;p.nome='';}
+  let escSel=p.escritorio||null;
+  const profs=(OP.profissao&&OP.profissao.length)?OP.profissao:['Arquiteto(a)','Designer de interiores','Engenheiro(a)','Construtor(a)','Mestre de obras','Outro'];
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>${ini.id?'Cadastro do profissional':'Novo profissional'}</h3>
+    <label>Nome *</label><input id="fpNome" value="${esc(p.nome||'')}">
+    <div class="g2"><div><label>Profissão</label><select id="fpProf">${profs.map(x=>`<option ${x===p.profissao?'selected':''}>${esc(x)}</option>`).join('')}</select></div>
+      <div><label>Data de nascimento</label><input type="date" id="fpNasc" value="${p.data_nascimento||''}"></div>
+      <div><label>WhatsApp</label><input id="fpWpp" value="${esc(p.whatsapp||'')}"></div>
+      <div><label>E-mail</label><input id="fpEmail" value="${esc(p.email||'')}"></div>
+      <div><label>Instagram</label><input id="fpInsta" value="${esc(p.instagram||'')}" placeholder="@"></div>
+      <div><label>Cidade</label><input id="fpCid" value="${esc(p.cidade||'')}"></div>
+      <div><label>CAU / CREA</label><input id="fpReg" value="${esc(p.registro_profissional||'')}"></div>
+      <div><label>Cód. cliente Santri</label><input id="fpSantri" value="${esc(p.codigo_santri||'')}"></div></div>
+    <label>Escritório</label><div id="fpEscAt">${escSel?`<b>${esc(escSel.nome)}</b> <button class="link" id="fpEscX">trocar</button>`:''}</div>
+    <div style="position:relative" id="fpEscBox" class="${escSel?'hide':''}"><input id="fpEsc" placeholder="buscar escritório (deixe vazio se trabalha sozinho)"><div class="sug hide" id="fpEscSug"></div></div>
+    <label>Observações</label><textarea id="fpObs" style="min-height:60px">${esc(p.observacao||'')}</textarea>
+    <div id="fpAviso"></div>
+    <div class="linha" style="margin-top:12px"><button class="gold" id="fpOk">Salvar</button><button class="sec" id="fpX">Cancelar</button></div></div></div>`;
+  $('#fpX').onclick=()=>$('#modal').innerHTML='';
+  const trocar=()=>{escSel=null;$('#fpEscAt').innerHTML='';$('#fpEscBox').classList.remove('hide');};
+  if($('#fpEscX')) $('#fpEscX').onclick=trocar;
+  let t; $('#fpEsc').oninput=e=>{clearTimeout(t);t=setTimeout(()=>sugProf('escr',e.target.value,$('#fpEscSug'),async(es)=>{
+    if(!es.id){ return; }
+    escSel=es; $('#fpEscAt').innerHTML=`<b>${esc(es.nome)}</b> <button class="link" id="fpEscX">trocar</button>`; $('#fpEscX').onclick=trocar; $('#fpEscBox').classList.add('hide');
+  },{criarDireto:true}),300)};
+  $('#fpOk').onclick=async()=>{
+    const nome=$('#fpNome').value.trim(); if(!nome) return toast('Informe o nome');
+    const reg={nome,profissional:true,profissao:$('#fpProf').value,data_nascimento:$('#fpNasc').value||null,whatsapp:$('#fpWpp').value.trim()||null,email:$('#fpEmail').value.trim()||null,
+      instagram:$('#fpInsta').value.trim()||null,cidade:$('#fpCid').value.trim()||null,registro_profissional:$('#fpReg').value.trim()||null,codigo_santri:$('#fpSantri').value.trim()||null,
+      observacao:$('#fpObs').value.trim()||null,escritorio_id:escSel?.id||null};
+    if(!ini.id && !$('#fpOk').dataset.conf){ // evita cadastro duplicado
+      const dig=(reg.whatsapp||'').replace(/\D/g,'').slice(-8); const pn=nome.split(/\s+/).slice(0,2).join(' ').replace(/[%,()]/g,'');
+      let q=sb.from('pessoas').select('id,nome,whatsapp,profissao').limit(5); q=dig.length>=8?q.or(`whatsapp.ilike.*${dig}*,nome.ilike.*${pn}*`):q.ilike('nome','%'+pn+'%');
+      const {data:dup}=await q;
+      if(dup&&dup.length){ $('#fpAviso').innerHTML=`<div class="aviso">Já existe cadastro parecido: ${dup.map(d=>`<a href="#" data-usar="${d.id}"><b>${esc(d.nome)}</b></a> ${esc(d.whatsapp||'')} ${esc(d.profissao||'')}`).join(' · ')}.<br>Clique no nome para usar o cadastro existente, ou em Salvar de novo para criar mesmo assim.</div>`;
+        $('#fpOk').dataset.conf='1';
+        $('#fpAviso').querySelectorAll('[data-usar]').forEach(a=>a.onclick=async e=>{e.preventDefault();const {data:ex}=await sb.from('pessoas').select('*').eq('id',a.dataset.usar).single();
+          if(!ex.profissional) await sb.from('pessoas').update({profissional:true,profissao:reg.profissao}).eq('id',ex.id);
+          $('#modal').innerHTML=''; onSaved&&onSaved(ex);});
+        return; }
+    }
+    const q=ini.id?sb.from('pessoas').update(reg).eq('id',ini.id).select().single():sb.from('pessoas').insert({...reg,criado_por:EU.id,loja_id:EU.loja_id}).select().single();
+    const {data,error}=await q; if(error) return erro(error);
+    $('#modal').innerHTML=''; toast('Cadastro salvo'); onSaved&&onSaved(data);
+  };
+}
+async function formEscr(ini,onSaved){
+  const e=ini.id?(await sb.from('escritorios').select('*').eq('id',ini.id).single()).data:{nome:ini.nome||''};
+  const socios=ini.id?(await sb.from('pessoas').select('id,nome,profissao,whatsapp,data_nascimento').eq('escritorio_id',ini.id).order('nome')).data:[];
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>${ini.id?'Escritório':'Novo escritório'}</h3>
+    <label>Nome do escritório *</label><input id="feNome" value="${esc(e.nome||'')}">
+    <div class="g2"><div><label>Telefone / WhatsApp</label><input id="feTel" value="${esc(e.telefone||'')}"></div>
+      <div><label>E-mail</label><input id="feEmail" value="${esc(e.email||'')}"></div>
+      <div><label>Instagram</label><input id="feInsta" value="${esc(e.instagram||'')}" placeholder="@"></div>
+      <div><label>CNPJ</label><input id="feCnpj" value="${esc(e.cnpj||'')}"></div>
+      <div><label>Endereço</label><input id="feEnd" value="${esc(e.endereco||'')}"></div>
+      <div><label>Cidade</label><input id="feCid" value="${esc(e.cidade||'')}"></div></div>
+    <label>Observações</label><textarea id="feObs" style="min-height:60px">${esc(e.observacao||'')}</textarea>
+    ${ini.id?`<label>Arquitetos do escritório</label><div>${(socios||[]).map(s=>`${esc(s.nome)} <span class="mut">${esc(s.profissao||'')}${s.data_nascimento?' · aniv. '+aniv(s.data_nascimento):''}</span>`).join('<br>')||'<span class="mut">Nenhum ainda — no cadastro da arquiteta, escolha este escritório.</span>'}</div>`:''}
+    <div class="linha" style="margin-top:12px"><button class="gold" id="feOk">Salvar</button><button class="sec" id="feX">Cancelar</button></div></div></div>`;
+  $('#feX').onclick=()=>$('#modal').innerHTML='';
+  $('#feOk').onclick=async()=>{
+    const nome=$('#feNome').value.trim(); if(!nome) return toast('Informe o nome');
+    const reg={nome,telefone:$('#feTel').value.trim()||null,email:$('#feEmail').value.trim()||null,instagram:$('#feInsta').value.trim()||null,cnpj:$('#feCnpj').value.trim()||null,
+      endereco:$('#feEnd').value.trim()||null,cidade:$('#feCid').value.trim()||null,observacao:$('#feObs').value.trim()||null};
+    const q=ini.id?sb.from('escritorios').update(reg).eq('id',ini.id).select().single():sb.from('escritorios').insert({...reg,criado_por:EU.id,loja_id:EU.loja_id}).select().single();
+    const {data,error}=await q;
+    if(error){ if(/duplicate|unique/i.test(error.message)) return toast('Já existe um escritório com esse nome — busque por ele.'); return erro(error); }
+    $('#modal').innerHTML=''; toast('Escritório salvo'); onSaved&&onSaved(data);
+  };
+}
+let PFT={aba:'arq',busca:''};
+async function telaProfissionais(){
+  const abas=[['arq',PROF.arq.plural],['escr','Escritórios'],['cons',PROF.cons.plural],['mestre',PROF.mestre.plural]];
+  $('#conteudo').innerHTML=`<div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Profissionais</h2><button class="gold" id="pfNovo">+ Novo cadastro</button></div>
+    <div class="tabs">${abas.map(([k,t])=>`<a href="#" class="${PFT.aba===k?'on':''}" data-pfa="${k}">${t}</a>`).join('')}</div>
+    <div class="card"><input id="pfBusca" placeholder="buscar por nome, escritório ou WhatsApp" value="${esc(PFT.busca)}"></div>
+    <div id="pfAniv"></div><div class="card"><div class="tbl" id="pfLista"><p class="mut">Carregando…</p></div></div>`;
+  document.querySelectorAll('[data-pfa]').forEach(b=>b.onclick=e=>{e.preventDefault();PFT.aba=b.dataset.pfa;telaProfissionais();});
+  let t; $('#pfBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{PFT.busca=e.target.value;listaProf();},300)};
+  $('#pfNovo').onclick=()=>PFT.aba==='escr'?formEscr({},listaProf):formProf({tipo:PFT.aba},listaProf);
+  listaProf();
+}
+async function listaProf(){
+  const b=PFT.busca.trim().replace(/[%,()]/g,''); const mes=String(new Date().getMonth()+1).padStart(2,'0');
+  if(PFT.aba==='escr'){
+    let q=sb.from('escritorios').select('id,nome,telefone,instagram,cidade,pessoas(nome)').eq('ativo',true).order('nome').limit(500); if(b) q=q.ilike('nome','%'+b+'%');
+    const {data,error}=await q; if(error) return erro(error); $('#pfAniv').innerHTML='';
+    $('#pfLista').innerHTML=data.length?`<table><tr><th>Escritório</th><th>Arquitetos</th><th>Telefone</th><th>Instagram</th><th>Cidade</th></tr>${data.map(e=>`<tr style="cursor:pointer" data-e="${e.id}"><td><b>${esc(e.nome)}</b></td><td>${esc((e.pessoas||[]).map(p=>p.nome).join(', '))}</td><td>${esc(e.telefone||'')}</td><td>${esc(e.instagram||'')}</td><td>${esc(e.cidade||'')}</td></tr>`).join('')}</table>`:'<p class="mut">Nenhum escritório cadastrado.</p>';
+    document.querySelectorAll('[data-e]').forEach(r=>r.onclick=()=>formEscr({id:r.dataset.e},listaProf)); return;
+  }
+  let q=sb.from('pessoas').select('id,nome,whatsapp,profissao,data_nascimento,instagram,cidade,escritorio:escritorios(nome),obra_pessoas(obra_id)').eq('profissional',true).in('profissao',PROF[PFT.aba].profs).order('nome').limit(1000);
+  const dig=b.replace(/\D/g,''); if(b) q=dig.length>=4?q.or(`whatsapp.ilike.*${dig}*,nome.ilike.*${b}*`):q.ilike('nome','%'+b+'%');
+  const {data,error}=await q; if(error) return erro(error);
+  const an=data.filter(p=>p.data_nascimento&&p.data_nascimento.slice(5,7)===mes).sort((a,c)=>a.data_nascimento.slice(8).localeCompare(c.data_nascimento.slice(8)));
+  $('#pfAniv').innerHTML=an.length?`<div class="card" style="background:#fffaf0"><b>🎂 Aniversariantes do mês:</b> ${an.map(p=>`${esc(p.nome)} (${aniv(p.data_nascimento)})`).join(' · ')}</div>`:'';
+  $('#pfLista').innerHTML=data.length?`<table><tr><th>Nome</th><th>Profissão</th><th>Escritório</th><th>WhatsApp</th><th>Aniversário</th><th>Obras</th></tr>${data.map(p=>`<tr style="cursor:pointer" data-p="${p.id}"><td><b>${esc(p.nome)}</b></td><td>${esc(p.profissao||'')}</td><td>${esc(p.escritorio?.nome||'')}</td><td>${esc(p.whatsapp||'')}</td><td>${aniv(p.data_nascimento)}</td><td>${(p.obra_pessoas||[]).length||''}</td></tr>`).join('')}</table>`:'<p class="mut">Nenhum cadastro ainda. Use "+ Novo cadastro".</p>';
+  document.querySelectorAll('[data-p]').forEach(r=>r.onclick=()=>formProf({id:r.dataset.p},listaProf));
 }
 
 // ---------- Conferência de ST (Santri × lista de NCM do planilhão) ----------
