@@ -708,7 +708,8 @@ async function abaNegoc(){
   <div class="card" id="ngJC"></div>
   <div class="card"><div class="linha">
     ${CAPA.podeEditar?`<button class="gold" id="ngSalvar">Salvar negociação</button><button class="sec" id="ngFechar">Marcar como FECHADA</button>`:''}
-    <button class="sec" id="ngProp">Proposta para o cliente</button></div><div id="ngMsg"></div></div>
+    <button class="sec" id="ngProp">Proposta para o cliente</button></div><div id="ngMsg"></div>
+    <p class="mut" style="margin-top:8px"><b>Salvar negociação</b>: guarda esta simulação na capa para abrir e continuar depois (não conta no mês). <b>Marcar como FECHADA</b>: o cliente fechou nessas condições — passa a contar na margem do mês da loja e fica registrada na linha do tempo. <b>Proposta</b>: versão para o cliente, sem custos nem margem.</p></div>
   ${listaNegs()}`;
   const pars=(await sb.from('parametros_loja').select('taxa_juros_cliente_am').eq('loja_id',CAPA.c.loja_id).maybeSingle()).data;
   $('#ngJuros').value=pars?((pars.taxa_juros_cliente_am*100).toFixed(2)):'2.99';
@@ -729,15 +730,17 @@ function listaNegs(){ return `<div class="card"><h3>Negociações salvas</h3>${(
   <button class="link" data-abrneg="${n.id}">abrir</button></div>`).join('')||'<p class="mut">Nenhuma ainda.</p>'}</div>`; }
 async function carregarItensNeg(){
   const {data:its}=await sb.from('orcamento_itens').select('*').eq('orcamento_id',$('#ngOrc').value).order('ordem');
-  NEG.itens=(its||[]).filter(i=>!(i.grupo_opcao!=null&&i.opcao_confirmada&&!i.escolhido)).map(i=>({id:i.id,produto_id:i.produto_id,ref:i.id,descricao:i.descricao,ambiente:i.ambiente,unidade:i.unidade,
-    quantidade:Number(i.quantidade),preco_orc:Number(i.total),preco_final:null,custo_un:null,frete_un:null}));
+  // opções do mesmo ambiente: vem marcada só a escolhida; o vendedor marca/desmarca o que entra na negociação
+  NEG.itens=(its||[]).map(i=>({id:i.id,produto_id:i.produto_id,ref:i.id,descricao:i.descricao,ambiente:i.ambiente,unidade:i.unidade,grupo:i.grupo_opcao,
+    quantidade:Number(i.quantidade),preco_orc:Number(i.total),preco_final:null,custo_un:null,frete_un:null,
+    incluir:!(i.grupo_opcao!=null&&!i.escolhido)}));
   await recalc();
 }
 function montarEntradaNeg(modoForcado){
   const d=Number($('#ngDesc').value||0)/100;
   return {loja_id:CAPA.c.loja_id, arquiteto:$('#ngArq').checked, goyases:$('#ngGoy').checked, frete_cliente:Number($('#ngFreteCli').value||0), desconto_pct:d,
     pagamento:{entrada_valor:Number($('#ngEnt').value||0), bandeira:$('#ngBand').value, modalidade:$('#ngMod').value, modo:modoForcado||$('#ngModo').value, juros_cliente_am:Number($('#ngJuros').value||0)/100},
-    itens:NEG.itens.map(i=>({produto_id:i.produto_id, ref:i.ref, descricao:i.descricao, quantidade:i.quantidade,
+    itens:NEG.itens.filter(i=>i.incluir).map(i=>({produto_id:i.produto_id, ref:i.ref, descricao:i.descricao, quantidade:i.quantidade,
       preco_total: i.preco_final!=null?i.preco_final:Math.round(i.preco_orc*(1-d)*100)/100, custo_un:i.custo_un, frete_un:i.frete_un}))};
 }
 async function recalc(){
@@ -746,17 +749,29 @@ async function recalc(){
   const {data:r,error}=await sb.rpc('calcular_negociacao',{p:ent}); if(error) return erro(error);
   NEG.ultimo={ent,r};
   const byRef={}; (r.itens||[]).forEach(x=>byRef[x.ref]=x);
-  $('#ngItens').innerHTML=`<table><tr><th>Item</th><th>Qtd</th><th>Preço orçamento</th><th>Preço final</th><th>Custo compra (un)</th><th>Frete (un)</th><th>Resultado antes das despesas</th></tr>
-   ${NEG.itens.map((i,ix)=>{const x=byRef[i.ref]||{};return `<tr><td>${esc(i.descricao)}<div class="mut">${esc(i.ambiente||'')}</div>${x.sem_custo?'<div class="atras">sem custo — informe</div>':''}</td>
-     <td>${i.quantidade} ${esc(i.unidade||'')}</td><td>${brl(i.preco_orc)}</td>
-     <td><input type="number" step="0.01" style="width:110px" data-pf="${ix}" value="${x.preco_total??''}"></td>
-     <td><input type="number" step="0.01" style="width:100px" data-cu="${ix}" value="${x.custo_un??''}"></td>
-     <td><input type="number" step="0.01" style="width:90px" data-fu="${ix}" value="${x.frete_un??''}"></td>
-     <td>${brl(x.mc_antes_desp)}</td></tr>`}).join('')}</table>
-   <p class="mut">Altere o preço final de um item para negociar só ele, ou o custo de compra se houver promoção da fábrica.</p>`;
-  document.querySelectorAll('[data-pf]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.pf].preco_final=e.value===''?null:Number(e.value);recalc();});
-  document.querySelectorAll('[data-cu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.cu].custo_un=e.value===''?null:Number(e.value);recalc();});
-  document.querySelectorAll('[data-fu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.fu].frete_un=e.value===''?null:Number(e.value);recalc();});
+  const nf=(v,d=2)=>v==null||v===''?'':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+  const pn=v=>{v=String(v||'').trim().replace(/\s|R\$/g,''); if(!v) return null; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); const n=Number(v); return isNaN(n)?null:n;};
+  const inp=(k,ix,v,w,d=2,dis=false)=>`<input inputmode="decimal" style="width:${w}px;text-align:right" data-${k}="${ix}" value="${nf(v,d)}" ${dis?'disabled':''}>`;
+  let totMc=0,totRb=0;
+  $('#ngItens').innerHTML=`<div class="linha" style="gap:8px;margin-bottom:6px"><button class="link" id="ngTodos">marcar todos</button><button class="link" id="ngNenhum">desmarcar todos</button>
+     <span class="mut">Desmarque os produtos que não entram nesta negociação (ex.: opções do mesmo ambiente).</span></div>
+   <table><tr><th></th><th>Item</th><th>Qtd</th><th style="text-align:right">Preço un. orçamento</th><th style="text-align:right">Preço un. final</th><th style="text-align:right">Total</th><th style="text-align:right">Custo compra (un)</th><th style="text-align:right">Frete (un)</th><th style="text-align:right">Margem de contribuição</th><th style="text-align:right">MC %</th></tr>
+   ${NEG.itens.map((i,ix)=>{const x=i.incluir?(byRef[i.ref]||{}):{}; const q=i.quantidade||1; const pu=i.incluir&&x.preco_total!=null?(x.preco_total/q):null;
+     if(i.incluir){totMc+=Number(x.mc||0);totRb+=Number(x.preco_total||0);}
+     const mp=i.incluir&&x.preco_total?x.mc/x.preco_total:null; const corI=mp==null?'':mp>=0.18?'var(--ok)':mp>=0.12?'var(--morna)':'var(--quente)';
+     return `<tr style="${i.incluir?'':'opacity:.45'}"><td><input type="checkbox" style="width:auto" data-inc="${ix}" ${i.incluir?'checked':''}></td>
+     <td>${esc(i.descricao)}<div class="mut">${esc(i.ambiente||'')}${i.grupo!=null?' · opção '+i.grupo:''}</div>${x.sem_custo?'<div class="atras">sem custo — informe</div>':''}</td>
+     <td style="white-space:nowrap">${nf(i.quantidade)} ${esc(i.unidade||'')}</td><td style="text-align:right">${brl(i.preco_orc/q)}</td>
+     <td style="text-align:right">${inp('pu',ix,pu,95,2,!i.incluir)}</td><td style="text-align:right;white-space:nowrap">${i.incluir?brl(x.preco_total):brl(i.preco_orc)}</td>
+     <td style="text-align:right">${inp('cu',ix,i.incluir?x.custo_un:null,90,2,!i.incluir)}</td><td style="text-align:right">${inp('fu',ix,i.incluir?x.frete_un:null,70,2,!i.incluir)}</td>
+     <td style="text-align:right;white-space:nowrap">${i.incluir?brl(x.mc):''}</td><td style="text-align:right;color:${corI}"><b>${mp==null?'':pct(mp)}</b></td></tr>`}).join('')}
+   <tr><td></td><td colspan="4"><b>Total dos produtos marcados</b></td><td style="text-align:right"><b>${brl(totRb)}</b></td><td></td><td></td><td style="text-align:right"><b>${brl(totMc)}</b></td><td style="text-align:right"><b>${totRb?pct(totMc/totRb):''}</b></td></tr></table>
+   <p class="mut">Altere o preço unitário final de um item para negociar só ele, ou o custo de compra se houver promoção da fábrica. A margem de contribuição de cada item já desconta impostos, custo, frete, comissão, RT, Goyases e cartão.</p>`;
+  document.querySelectorAll('[data-inc]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.inc].incluir=e.checked;recalc();});
+  $('#ngTodos').onclick=()=>{NEG.itens.forEach(i=>i.incluir=true);recalc();}; $('#ngNenhum').onclick=()=>{NEG.itens.forEach(i=>i.incluir=false);recalc();};
+  document.querySelectorAll('[data-pu]').forEach(e=>e.onchange=()=>{const it=NEG.itens[e.dataset.pu]; const v=pn(e.value); it.preco_final=v==null?null:Math.round(v*it.quantidade*100)/100; recalc();});
+  document.querySelectorAll('[data-cu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.cu].custo_un=pn(e.value);recalc();});
+  document.querySelectorAll('[data-fu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.fu].frete_un=pn(e.value);recalc();});
   const cor=r.mc_pct>=0.18?'var(--ok)':r.mc_pct>=0.12?'var(--morna)':'var(--quente)';
   const {data:mes}=await sb.rpc('mc_do_mes',{p_loja:CAPA.c.loja_id});
   const pe=mes?.pe_mc_mensal||0, fech=Number(mes?.mc_fechada||0), falta=Math.max(pe-fech,0);
@@ -800,18 +815,19 @@ async function abrirNeg(id){
   await carregarItensNeg();
   $('#ngDesc').value=((e.desconto_pct||0)*100).toFixed(1); $('#ngFreteCli').value=e.frete_cliente||0; $('#ngArq').checked=!!e.arquiteto; $('#ngGoy').checked=!!e.goyases;
   $('#ngEnt').value=e.pagamento?.entrada_valor||0; $('#ngBand').value=e.pagamento?.bandeira||'PIX'; $('#ngBand').onchange(); $('#ngMod').value=e.pagamento?.modalidade||''; $('#ngModo').value=e.pagamento?.modo||'loja'; $('#ngModo').onchange();
+  NEG.itens.forEach(i=>i.incluir=(e.itens||[]).some(x=>x.ref===i.ref));
   (e.itens||[]).forEach(x=>{const i=NEG.itens.find(y=>y.ref===x.ref); if(i){ i.custo_un=x.custo_un; i.frete_un=x.frete_un; const auto=Math.round(i.preco_orc*(1-(e.desconto_pct||0))*100)/100; i.preco_final=Math.abs(x.preco_total-auto)>0.01?x.preco_total:null; }});
   NEG.id=n.id; await recalc(); toast('Negociação carregada'); window.scrollTo(0,0);
 }
 function proposta(){
   const {ent,r}=NEG.ultimo; const o=NEG.orcs.find(x=>x.id===$('#ngOrc').value)||{};
   const byRef={}; r.itens.forEach(x=>byRef[x.ref]=x);
-  const ambs=[...new Set(NEG.itens.map(i=>i.ambiente||''))];
+  const ambs=[...new Set(NEG.itens.filter(i=>i.incluir).map(i=>i.ambiente||''))];
   const np=(ent.pagamento.modalidade.match(/(\d+)x/)||[])[1];
   const w=window.open('','_blank');
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Proposta Dom Gabriel</title><style>body{font-family:Arial;max-width:800px;margin:20px auto;color:#1d2733;padding:0 12px}h1{color:#1F3A5F;margin:0}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}th{color:#666;font-weight:normal}.tot{font-size:20px;color:#1F3A5F}.box{border:1px solid #C9A227;border-radius:8px;padding:12px;margin-top:14px;background:#fffaf0}@media print{button{display:none}}</style></head><body>
     <h1>Dom Gabriel Acabamentos</h1><p>Proposta para <b>${esc(o.cliente_pdf||'')}</b> · orçamento ${esc(o.numero_santri||'')} · ${new Date().toLocaleDateString('pt-BR')}${o.data_validade?' · válida até '+dBR(o.data_validade):''}</p>
-    ${ambs.map(a=>`<h3 style="color:#1F3A5F;margin-bottom:4px">${esc(a)}</h3><table><tr><th>Produto</th><th>Qtd</th><th style="text-align:right">Valor</th></tr>${NEG.itens.filter(i=>(i.ambiente||'')===a).map(i=>`<tr><td>${esc(i.descricao)}</td><td>${i.quantidade} ${esc(i.unidade||'')}</td><td style="text-align:right">${brl(byRef[i.ref]?.preco_total)}</td></tr>`).join('')}</table>`).join('')}
+    ${ambs.map(a=>`<h3 style="color:#1F3A5F;margin-bottom:4px">${esc(a)}</h3><table><tr><th>Produto</th><th>Qtd</th><th style="text-align:right">Preço unit.</th><th style="text-align:right">Valor</th></tr>${NEG.itens.filter(i=>i.incluir&&(i.ambiente||'')===a).map(i=>`<tr><td>${esc(i.descricao)}</td><td>${Number(i.quantidade).toLocaleString('pt-BR')} ${esc(i.unidade||'')}</td><td style="text-align:right">${brl((byRef[i.ref]?.preco_total||0)/(i.quantidade||1))}</td><td style="text-align:right">${brl(byRef[i.ref]?.preco_total)}</td></tr>`).join('')}</table>`).join('')}
     ${ent.frete_cliente?`<p>Frete: ${brl(ent.frete_cliente)}</p>`:''}
     <p class="tot">Total: <b>${brl(r.receita)}</b>${ent.desconto_pct?` <span style="font-size:14px;color:#2e7d32">(já com ${(ent.desconto_pct*100).toFixed(1)}% de desconto)</span>`:''}</p>
     ${ent.pagamento.entrada_valor?`<p>Entrada: ${brl(ent.pagamento.entrada_valor)}</p>`:''}
