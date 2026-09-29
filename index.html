@@ -125,9 +125,20 @@ async function iniciar(){
 sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
-function montarMenu(){
+// quem enxerga as duas lojas escolhe qual ver (0 = ambas)
+function veDuasLojas(){ return ehDirecao()||!!EU?.todas_lojas||!EU?.loja_id; }
+let LOJA_VER=0;
+function iniciarLojaVer(){ let v=0; try{ v=+(localStorage.getItem('lojaVer')||0); }catch(_){}
+  LOJA_VER=veDuasLojas()?(LOJAS.some(l=>l.id===v)?v:0):(EU.loja_id||0);
+  PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER;
+  if(veDuasLojas()&&filtro.escopo==='minhas'&&!filtro._ini){ filtro.escopo='todas'; } filtro._ini=1; }
+function montarMenu(){ iniciarLojaVer();
   const itens=SETORES.includes(EU.papel)?[['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/capas','Capas']]:[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
-  $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
+  const seletor=veDuasLojas()?`<div style="padding:12px"><label style="color:#cfd8e3">Ver loja</label><select id="lojaVer" style="margin-top:4px"><option value="0">Ambas (PVA + RV)</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>`
+    :`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
+  $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+seletor;
+  if($('#lojaVer')){ $('#lojaVer').value=String(LOJA_VER); $('#lojaVer').onchange=e=>{ LOJA_VER=+e.target.value; try{localStorage.setItem('lojaVer',LOJA_VER)}catch(_){}
+    PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER; rota(); }; }
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
 window.addEventListener('hashchange',rota);
@@ -154,7 +165,7 @@ async function telaLista(){
   <div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Capas de atendimento</h2><button class="gold" onclick="location.hash='#/nova'">+ Nova capa</button></div>
   <div class="card"><div class="g3">
     <div><label>Buscar (nome, WhatsApp, endereço, nº)</label><input id="fBusca" value="${esc(filtro.busca)}" placeholder="ex.: Juliana, 66999…, Rua…"></div>
-    <div><label>Mostrar</label><select id="fEscopo"><option value="minhas">Minhas capas</option><option value="loja">Todas da loja</option>${ehDirecao()?'<option value="todas">Todas as lojas</option>'+LOJAS.map(l=>`<option value="l${l.id}">Só ${esc(l.codigo)} – ${esc(l.nome)}</option>`).join(''):''}</select></div>
+    <div><label>Mostrar</label><select id="fEscopo"><option value="minhas">Minhas capas</option>${veDuasLojas()?'':'<option value="loja">Todas da loja</option>'}${veDuasLojas()?'<option value="todas">Todas as capas (loja escolhida no menu)</option>':''}</select></div>
     <div><label>Status</label><select id="fStatus"><option value="abertas">Em andamento</option><option value="todas">Todos</option>${(OP.status_capa||[]).map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
   </div></div>
   <div id="kpis" class="kpis" style="margin-bottom:12px"></div>
@@ -168,7 +179,7 @@ async function telaLista(){
 async function carregarLista(){
   let q=sb.from('vw_capas_lista').select('*').order('proximo_passo_data',{ascending:true,nullsFirst:false}).limit(300);
   if(filtro.escopo==='minhas') q=q.eq('vendedor_id',EU.id);
-  else if(filtro.escopo==='loja') q=q.eq('loja_id',EU.loja_id);
+  else if(filtro.escopo==='loja'||filtro.escopo==='todas'){ const lj=filtro.escopo==='loja'?(LOJA_VER||EU.loja_id):LOJA_VER; if(lj) q=q.eq('loja_id',lj); }
   else if(/^l\d+$/.test(filtro.escopo)) q=q.eq('loja_id',+filtro.escopo.slice(1));
   if(filtro.status==='abertas') q=q.in('status',['Aberta','Em orçamento']);
   else if(filtro.status!=='todas') q=q.eq('status',filtro.status);
@@ -193,7 +204,7 @@ async function carregarLista(){
 function novaCapa(){
   $('#conteudo').innerHTML=`<div class="card" style="max-width:560px">
     <h3>Nova Capa de Atendimento</h3>
-    <label>Loja</label><select id="nLoja" ${ehDirecao()?'':'disabled'}>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===EU.loja_id?'selected':''}>${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select>
+    <label>Loja</label><select id="nLoja" ${ehDirecao()?'':'disabled'}>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===(LOJA_VER||EU.loja_id)?'selected':''}>${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select>
     <label>Tipo de entrada</label>${sel('tipo_entrada','','id="nTipo"')}
     <label>Origem do cliente</label>${sel('origem','','id="nOrigem"')}
     <label>Detalhe da origem (quem indicou, qual arquiteto…)</label><input id="nDet">
@@ -1532,12 +1543,13 @@ async function telaUsuarios(){
   const {data}=await sb.from('usuarios').select('*').order('ativo').order('nome');
   const papeis=['vendedor','gerente','direcao','admin','logistica','financeiro','compras'];
   $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Usuários</h2>
-  <p class="mut">Quem cria acesso entra bloqueado. Marque "Ativo", escolha a loja e o papel para liberar.</p>
-  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th></tr>
+  <p class="mut">Quem cria acesso entra bloqueado. Marque "Ativo", escolha a loja e o papel para liberar. Direção e admin veem as duas lojas; para outro papel ver as duas, marque "Vê as duas lojas".</p>
+  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th><th>Vê as duas lojas</th></tr>
   ${(data||[]).map(u=>`<tr style="${u.ativo?'':'background:#fff8e6'}"><td>${esc(u.nome)}</td><td class="mut">${esc(u.email)}</td>
     <td><input type="checkbox" data-t="usuarios" data-f="ativo" data-id="${u.id}" ${u.ativo?'checked':''} ${u.id===EU.id?'disabled':''} style="width:22px;height:22px"></td>
     <td><select data-t="usuarios" data-f="loja_id" data-id="${u.id}"><option value=""></option>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===u.loja_id?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select></td>
-    <td><select data-t="usuarios" data-f="papel" data-id="${u.id}" ${u.id===EU.id?'disabled':''}>${papeis.map(p=>`<option ${p===u.papel?'selected':''}>${p}</option>`).join('')}</select></td></tr>`).join('')}
+    <td><select data-t="usuarios" data-f="papel" data-id="${u.id}" ${u.id===EU.id?'disabled':''}>${papeis.map(p=>`<option ${p===u.papel?'selected':''}>${p}</option>`).join('')}</select></td>
+    <td>${['direcao','admin'].includes(u.papel)?'<span class="mut">sempre</span>':`<input type="checkbox" data-t="usuarios" data-f="todas_lojas" data-id="${u.id}" ${u.todas_lojas?'checked':''} style="width:22px;height:22px">`}</td></tr>`).join('')}
   </table></div>`;
   ligarCampos($('#conteudo'));
 }
