@@ -53,7 +53,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div class="card">
     <h2>1. Escolha o relatório</h2>
     <label>Tipo de arquivo</label>
-    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option></select>
+    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option></select>
+    <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select></div>
     <p class="mut">Próximos tipos: Vendas, Compras, Entradas, Contas a pagar/receber.</p>
     <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
@@ -169,7 +170,11 @@ drop.ondrop=e=>{e.preventDefault();drop.classList.remove('on');if(e.dataTransfer
 $('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
 let arquivoNome='';
 
+const TIPO=()=>$('tipo').value;
+const STG=()=>TIPO()==='precos'?'precos_staging':'produtos_staging';
+$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); resetPassos(); };
 async function lerArquivo(f){
+  if(/^RV[_ ]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ ]/i.test(f.name)) $('lojaImp').value='1';
   resetPassos(); arquivoNome=f.name;
   drop.innerHTML=`Lendo <b>${f.name}</b>…`;
   let rows;
@@ -236,6 +241,9 @@ const txt=v=>{v=String(v??'').trim();return v||null};
 
 function montarRegistro(r){
   const g=c=>mapa[c]!==undefined?r[mapa[c]]:'';
+  if(TIPO()==='precos'){ const pid=numBR(String(g('produto_id')).replace(/\./g,''));
+    return {loja_id:+$('lojaImp').value, produto_id:pid, preco_tabela_fabrica:numBR(g('preco_tabela_fabrica')), pct_ipi:numBR(g('pct_ipi')), pct_st:numBR(g('pct_st')), tipo_st:txt(g('tipo_st')),
+      pct_icms:numBR(g('pct_icms')), vlr_frete_un:numBR(g('vlr_frete_un')), custo_comercial:numBR(g('custo_comercial')), preco_venda:numBR(g('preco_venda')), data_preco:dataBR(g('data_preco'))}; }
   const id=numBR(String(g('id')).replace(/\./g,''));
   return {id, nome:txt(g('nome')), marca:txt(g('marca')), unidade:txt(g('unidade')),
     m2_caixa:numBR(g('m2_caixa')), peso_caixa_kg:numBR(g('peso_caixa_kg')), peso_unidade_kg:numBR(g('peso_unidade_kg')),
@@ -249,15 +257,15 @@ function montarRegistro(r){
 async function enviarStaging(){
   $('passoEnvio').classList.remove('hide');
   const regs=[]; const vistos=new Set(); let invalidos=0;
-  for(const r of linhas){const x=montarRegistro(r); if(!x.id||!x.nome){invalidos++;continue} if(vistos.has(x.id))continue; vistos.add(x.id); regs.push(x);}
-  pendencias=regs.filter(x=>x.unidade==='M2'&&(!x.peso_caixa_kg||!x.m2_caixa));
-  const {data:imp,error}=await sb.from('importacoes').insert({tipo:$('tipo').value,arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
+  for(const r of linhas){const x=montarRegistro(r); const k=TIPO()==='precos'?x.produto_id:x.id; if(!k||(TIPO()==='produtos'&&!x.nome)){invalidos++;continue} if(vistos.has(k))continue; vistos.add(k); regs.push(x);}
+  pendencias=TIPO()==='produtos'?regs.filter(x=>x.unidade==='M2'&&(!x.peso_caixa_kg||!x.m2_caixa)):[];
+  const {data:imp,error}=await sb.from('importacoes').insert({tipo:TIPO()==='precos'?'precos_'+($('lojaImp').value==='1'?'PVA':'RV'):TIPO(),arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
   if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
   importacaoId=imp.id;
   const lote=1000;
   for(let i=0;i<regs.length;i+=lote){
     const pedaço=regs.slice(i,i+lote).map(x=>({...x,importacao_id:importacaoId}));
-    const {error:e}=await sb.from('produtos_staging').insert(pedaço);
+    const {error:e}=await sb.from(STG()).insert(pedaço);
     if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
     const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
   }
@@ -266,10 +274,12 @@ async function enviarStaging(){
 }
 
 async function previa(){
-  const {data,error}=await sb.rpc('previa_importacao_produtos',{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':'previa_importacao_produtos',{p_importacao:importacaoId});
   if(error) return msg('previaMsgs','Erro na prévia: '+error.message,'err');
   $('passoPrevia').classList.remove('hide');
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
+  const pr=TIPO()==='precos'; $('inativar').parentElement.classList.toggle('hide',pr); $('btnPendencias').classList.toggle('hide',pr);
+  if(pr){ $('kpis').innerHTML=k(data.no_arquivo,'preços no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.sem_preco_tabela,'sem preço de fábrica')+k(data.sem_cadastro,'sem cadastro de produto (ignorados)'); $('previaMsgs').innerHTML=''; msg('previaMsgs',`Loja: <b>${data.loja_id==1?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Confira se é a loja certa antes de gravar.`,'info'); return; }
   $('kpis').innerHTML=k(data.no_arquivo,'produtos no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.ausentes_no_arquivo,'ativos no banco que não vieram')+k(data.m2_sem_peso_caixa,'m² sem peso da caixa')+k(data.m2_sem_m2_caixa,'m² sem m²/caixa');
   $('previaMsgs').innerHTML='';
   if(data.ativos_hoje>0 && data.no_arquivo < data.ativos_hoje*0.9) msg('previaMsgs',`Atenção: o arquivo tem ${data.no_arquivo} produtos e o banco tem ${data.ativos_hoje} ativos (mais de 10% de diferença). Confira se o filtro do relatório está certo antes de gravar.`,'warn');
@@ -281,7 +291,7 @@ $('btnPendencias').onclick=()=>{
 };
 $('btnAplicar').onclick=async()=>{
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
-  const {data,error}=await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
+  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
   $('resultado').classList.remove('hide');
   if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
@@ -290,7 +300,7 @@ $('btnAplicar').onclick=async()=>{
 };
 $('btnCancelar').onclick=()=>cancelar(true);
 async function cancelar(avisar){
-  if(importacaoId){ await sb.from('produtos_staging').delete().eq('importacao_id',importacaoId); await sb.from('importacoes').update({status:'cancelada'}).eq('id',importacaoId); }
+  if(importacaoId){ await sb.from(STG()).delete().eq('importacao_id',importacaoId); await sb.from('importacoes').update({status:'cancelada'}).eq('id',importacaoId); }
   resetPassos(); if(avisar){$('resultado').classList.remove('hide');$('resultado').innerHTML='<div class="msg info">Importação cancelada. Nada foi gravado.</div>'} historico();
 }
 function resetPassos(){['passoColunas','passoEnvio','passoPrevia','resultado'].forEach(i=>$(i).classList.add('hide'));$('colMsgs').innerHTML='';$('previaMsgs').innerHTML='';$('barra').style.width='0';importacaoId=null;}

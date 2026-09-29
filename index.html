@@ -126,7 +126,7 @@ sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
 // ================= NAVEGAÇÃO =================
 function montarMenu(){
-  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários']);
+  const itens=[['#/capas','Capas'],['#/nova','+ Nova capa']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros']);
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
@@ -137,6 +137,7 @@ function rota(){
   if(h.startsWith('#/capa/')) return abrirCapa(h.split('/')[2]);
   if(h==='#/nova') return novaCapa();
   if(h==='#/usuarios') return telaUsuarios();
+  if(h==='#/parametros') return telaParametros();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -223,7 +224,7 @@ async function abrirCapa(id){
      </div>
      <div id="perdaBox" class="${c.status==='Perdida'?'':'hide'}"><label>Motivo da perda</label>${sel('motivo_perda',c.motivo_perda,`data-t="capas" data-f="motivo_perda" ${dis}`)}</div>
    </div>
-   <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
+   <div class="tabs">${[['quem','Quem e onde'],['bant','Qualificação'],['produtos','Produtos vistos'],['check','Checklist'],['orc','Orçamentos'],['negoc','Negociação'],['tempo','Linha do tempo']].map(([k,t])=>`<a href="#" data-aba="${k}" class="${k===abaAtual?'on':''}">${t}</a>`).join('')}</div>
    <div id="aba"></div>`;
   document.querySelectorAll('.tabs a').forEach(a=>a.onclick=e=>{e.preventDefault();abaAtual=a.dataset.aba;document.querySelectorAll('.tabs a').forEach(x=>x.classList.toggle('on',x===a));renderAba();});
   ligarCampos($('#conteudo')); atualizarResumo(); renderAba();
@@ -247,7 +248,7 @@ async function atualizarResumo(){
   $('#resumo').innerHTML=`<span class="pill ${r.temperatura}" title="BANT: B${r.bant_b} A${r.bant_a} N${r.bant_n} T${r.bant_t}">${r.temperatura} · ${r.pontos}/4</span>
    ${r.valor_em_negociacao>0?` <b style="margin-left:8px">${brl(r.valor_em_negociacao)}</b> <span class="mut">em negociação</span>`:''}`;
 }
-function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:abaCheck,orc:abaOrc,tempo:abaTempo})[abaAtual](); }
+function renderAba(){ ({quem:abaQuem,bant:abaBant,produtos:abaProdutos,check:abaCheck,orc:abaOrc,negoc:abaNegoc,tempo:abaTempo})[abaAtual](); }
 
 // ---------- Quem e onde ----------
 async function abaQuem(){
@@ -671,6 +672,183 @@ async function editarItensSalvos(oid){
     } else box.querySelectorAll('input,button').forEach(x=>x.disabled=true);
   };
   render();
+}
+
+// ---------- Negociação ----------
+let NEG=null; let _negT=null;
+const pct=v=>v==null?'-':(Number(v)*100).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+async function abaNegoc(){
+  const {data:os}=await sb.from('orcamentos').select('id,numero_santri,versao,momento,quente,status,valor_provavel,lido_do_pdf,data_validade,cliente_pdf').eq('capa_id',CAPA.c.id).neq('status','Substituído (nova versão)').order('quente',{ascending:false});
+  const {data:negs}=await sb.from('negociacoes').select('id,status,resultado,entrada,criado_em,atualizado_em,orcamento_id').eq('capa_id',CAPA.c.id).order('atualizado_em',{ascending:false});
+  const {data:arq}=await sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id).eq('papel','Arquiteto / designer');
+  const {data:tx}=await sb.from('taxas_cartao').select('bandeira,modalidade,taxa').eq('ativo',true).order('id');
+  NEG={orcs:(os||[]).filter(o=>o.lido_do_pdf), negs:negs||[], temArq:(arq||[]).length>0, taxas:tx||[], itens:[], id:null};
+  if(!NEG.orcs.length){ $('#aba').innerHTML='<div class="card"><p class="mut">Suba primeiro um orçamento em PDF na aba Orçamentos. A negociação parte dos itens dele.</p></div>'+listaNegs(); return; }
+  const band=[...new Set(NEG.taxas.map(t=>t.bandeira))];
+  $('#aba').innerHTML=`
+  <div class="card"><div class="g3">
+    <div><label>Orçamento</label><select id="ngOrc">${NEG.orcs.map(o=>`<option value="${o.id}">${esc(o.numero_santri)}${o.versao?' v'+esc(o.versao):''} · ${esc(o.momento||'')}${o.quente?' · QUENTE':''} · ${brl(o.valor_provavel)}</option>`).join('')}</select></div>
+    <div><label>Desconto geral (%)</label><input id="ngDesc" type="number" step="0.1" value="0"></div>
+    <div><label>Frete cobrado do cliente (R$)</label><input id="ngFreteCli" type="number" step="0.01" value="0"></div></div>
+    <div class="linha" style="margin-top:10px;gap:18px">
+      <label style="display:flex;gap:6px;align-items:center;color:var(--txt);margin:0"><input type="checkbox" id="ngArq" style="width:auto" ${NEG.temArq?'checked':''}> Tem arquiteto (RT)</label>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--txt);margin:0"><input type="checkbox" id="ngGoy" style="width:auto" ${NEG.temArq?'checked':''}> Goyases / Metropolitano</label>
+    </div></div>
+  <div class="card"><h3>Pagamento</h3><div class="g3">
+    <div><label>Entrada (R$)</label><input id="ngEnt" type="number" step="0.01" value="0"></div>
+    <div><label>Restante: forma / bandeira</label><select id="ngBand"><option>PIX</option><option>Dinheiro</option>${band.map(b=>`<option>${esc(b)}</option>`).join('')}</select></div>
+    <div><label>Modalidade</label><select id="ngMod"></select></div>
+    <div id="ngModoBox"><label>Juros do parcelamento</label><select id="ngModo"><option value="loja">Loja absorve (sem juros para o cliente)</option><option value="cliente">Juros pago pelo cliente</option></select></div>
+    <div id="ngJurosBox" class="hide"><label>Juros ao cliente (% ao mês, estimado)</label><input id="ngJuros" type="number" step="0.01"></div>
+  </div>${NEG.taxas.length?'':'<div class="aviso">Taxas de cartão ainda não cadastradas — a direção cadastra em Parâmetros.</div>'}</div>
+  <div class="card"><h3>Itens</h3><div class="tbl" id="ngItens"></div></div>
+  <div class="card" id="ngRes"></div>
+  <div class="card" id="ngJC"></div>
+  <div class="card"><div class="linha">
+    ${CAPA.podeEditar?`<button class="gold" id="ngSalvar">Salvar negociação</button><button class="sec" id="ngFechar">Marcar como FECHADA</button>`:''}
+    <button class="sec" id="ngProp">Proposta para o cliente</button></div><div id="ngMsg"></div></div>
+  ${listaNegs()}`;
+  const pars=(await sb.from('parametros_loja').select('taxa_juros_cliente_am').eq('loja_id',CAPA.c.loja_id).maybeSingle()).data;
+  $('#ngJuros').value=pars?((pars.taxa_juros_cliente_am*100).toFixed(2)):'2.99';
+  const preencherMod=()=>{const b=$('#ngBand').value;const ms=NEG.taxas.filter(t=>t.bandeira===b).map(t=>t.modalidade);
+    $('#ngMod').innerHTML=(ms.length?ms:['À vista']).map(m=>`<option>${esc(m)}</option>`).join('');
+    const cartao=!['PIX','Dinheiro','Boleto'].includes(b); $('#ngModoBox').classList.toggle('hide',!cartao); if(!cartao) $('#ngModo').value='loja'; $('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');};
+  $('#ngBand').onchange=()=>{preencherMod();recalc();}; preencherMod();
+  $('#ngModo').onchange=()=>{$('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');recalc();};
+  ['ngDesc','ngFreteCli','ngEnt','ngMod','ngJuros','ngArq','ngGoy'].forEach(i=>{$('#'+i).addEventListener('change',recalc);$('#'+i).addEventListener('input',()=>{clearTimeout(_negT);_negT=setTimeout(recalc,400)});});
+  $('#ngOrc').onchange=carregarItensNeg;
+  if($('#ngSalvar')){ $('#ngSalvar').onclick=()=>salvarNeg('Rascunho'); $('#ngFechar').onclick=()=>{if(confirm('Marcar esta negociação como FECHADA? Ela passa a contar na MC do mês.'))salvarNeg('Fechada');}; }
+  $('#ngProp').onclick=proposta;
+  document.querySelectorAll('[data-abrneg]').forEach(b=>b.onclick=()=>abrirNeg(b.dataset.abrneg));
+  await carregarItensNeg();
+}
+function listaNegs(){ return `<div class="card"><h3>Negociações salvas</h3>${(NEG?.negs||[]).map(n=>`<div class="item linha" style="justify-content:space-between">
+  <span><b>${esc(n.status)}</b> · ${new Date(n.atualizado_em).toLocaleString('pt-BR')} · receita ${brl(n.resultado?.receita)} · MC ${brl(n.resultado?.mc)} (${pct(n.resultado?.mc_pct)})</span>
+  <button class="link" data-abrneg="${n.id}">abrir</button></div>`).join('')||'<p class="mut">Nenhuma ainda.</p>'}</div>`; }
+async function carregarItensNeg(){
+  const {data:its}=await sb.from('orcamento_itens').select('*').eq('orcamento_id',$('#ngOrc').value).order('ordem');
+  NEG.itens=(its||[]).filter(i=>!(i.grupo_opcao!=null&&i.opcao_confirmada&&!i.escolhido)).map(i=>({id:i.id,produto_id:i.produto_id,ref:i.id,descricao:i.descricao,ambiente:i.ambiente,unidade:i.unidade,
+    quantidade:Number(i.quantidade),preco_orc:Number(i.total),preco_final:null,custo_un:null,frete_un:null}));
+  await recalc();
+}
+function montarEntradaNeg(modoForcado){
+  const d=Number($('#ngDesc').value||0)/100;
+  return {loja_id:CAPA.c.loja_id, arquiteto:$('#ngArq').checked, goyases:$('#ngGoy').checked, frete_cliente:Number($('#ngFreteCli').value||0), desconto_pct:d,
+    pagamento:{entrada_valor:Number($('#ngEnt').value||0), bandeira:$('#ngBand').value, modalidade:$('#ngMod').value, modo:modoForcado||$('#ngModo').value, juros_cliente_am:Number($('#ngJuros').value||0)/100},
+    itens:NEG.itens.map(i=>({produto_id:i.produto_id, ref:i.ref, descricao:i.descricao, quantidade:i.quantidade,
+      preco_total: i.preco_final!=null?i.preco_final:Math.round(i.preco_orc*(1-d)*100)/100, custo_un:i.custo_un, frete_un:i.frete_un}))};
+}
+async function recalc(){
+  if(!NEG||!NEG.itens) return;
+  const ent=montarEntradaNeg();
+  const {data:r,error}=await sb.rpc('calcular_negociacao',{p:ent}); if(error) return erro(error);
+  NEG.ultimo={ent,r};
+  const byRef={}; (r.itens||[]).forEach(x=>byRef[x.ref]=x);
+  $('#ngItens').innerHTML=`<table><tr><th>Item</th><th>Qtd</th><th>Preço orçamento</th><th>Preço final</th><th>Custo compra (un)</th><th>Frete (un)</th><th>Resultado antes das despesas</th></tr>
+   ${NEG.itens.map((i,ix)=>{const x=byRef[i.ref]||{};return `<tr><td>${esc(i.descricao)}<div class="mut">${esc(i.ambiente||'')}</div>${x.sem_custo?'<div class="atras">sem custo — informe</div>':''}</td>
+     <td>${i.quantidade} ${esc(i.unidade||'')}</td><td>${brl(i.preco_orc)}</td>
+     <td><input type="number" step="0.01" style="width:110px" data-pf="${ix}" value="${x.preco_total??''}"></td>
+     <td><input type="number" step="0.01" style="width:100px" data-cu="${ix}" value="${x.custo_un??''}"></td>
+     <td><input type="number" step="0.01" style="width:90px" data-fu="${ix}" value="${x.frete_un??''}"></td>
+     <td>${brl(x.mc_antes_desp)}</td></tr>`}).join('')}</table>
+   <p class="mut">Altere o preço final de um item para negociar só ele, ou o custo de compra se houver promoção da fábrica.</p>`;
+  document.querySelectorAll('[data-pf]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.pf].preco_final=e.value===''?null:Number(e.value);recalc();});
+  document.querySelectorAll('[data-cu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.cu].custo_un=e.value===''?null:Number(e.value);recalc();});
+  document.querySelectorAll('[data-fu]').forEach(e=>e.onchange=()=>{NEG.itens[e.dataset.fu].frete_un=e.value===''?null:Number(e.value);recalc();});
+  const cor=r.mc_pct>=0.18?'var(--ok)':r.mc_pct>=0.12?'var(--morna)':'var(--quente)';
+  const {data:mes}=await sb.rpc('mc_do_mes',{p_loja:CAPA.c.loja_id});
+  const pe=mes?.pe_mc_mensal||0, fech=Number(mes?.mc_fechada||0), falta=Math.max(pe-fech,0);
+  const lin=(t,v,neg=true)=>`<tr><td>${t}</td><td style="text-align:right">${neg&&v?'− ':''}${brl(v)}</td><td style="text-align:right" class="mut">${r.receita?pct(v/r.receita):''}</td></tr>`;
+  $('#ngRes').innerHTML=`<h3>Resultado da venda</h3>
+    <div class="kpis"><div class="kpi"><b>${brl(r.receita)}</b><span>valor da venda</span></div>
+      <div class="kpi"><b style="color:${cor}">${brl(r.mc)}</b><span>margem de contribuição</span></div>
+      <div class="kpi"><b style="color:${cor}">${pct(r.mc_pct)}</b><span>MC %</span></div>
+      ${r.parcela_cliente?`<div class="kpi"><b>${r.parcelas}x ${brl(r.parcela_cliente)}</b><span>parcela estimada ao cliente</span></div>`:''}</div>
+    <table style="margin-top:10px;max-width:520px">${lin('Receita',r.receita,false)}${lin('Impostos (líquidos de créditos)',r.impostos)}${lin('Custo dos produtos',r.custo_produtos)}${lin('Frete',r.frete)}
+      ${lin('Comissão vendedor',r.comissao)}${lin('RT arquiteto',r.rt)}${lin('Goyases / Metropolitano',r.goyases)}${lin('Cartão ('+pct(r.taxa_cartao)+')',r.custo_financeiro)}
+      <tr><td><b>Margem de contribuição</b></td><td style="text-align:right"><b>${brl(r.mc)}</b></td><td style="text-align:right"><b>${pct(r.mc_pct)}</b></td></tr></table>
+    ${(r.avisos||[]).map(a=>`<div class="aviso">${esc(a)}</div>`).join('')}
+    <div class="item" style="margin-top:10px"><b>Mês da loja:</b> MC fechada ${brl(fech)} de ${brl(pe)} do ponto de equilíbrio
+      <div style="height:8px;background:#e6e9ee;border-radius:4px;margin:6px 0"><div style="height:8px;border-radius:4px;background:var(--gold);width:${pe?Math.min(100,fech/pe*100):0}%"></div></div>
+      <span class="mut">Faltam ${brl(falta)}. Esta venda cobre ${pe?pct(Math.max(r.mc,0)/Math.max(falta,1)).replace('-','0'):'-'} do que falta.</span></div>`;
+  // comparação juros do cliente
+  const cartao=!['PIX','Dinheiro','Boleto'].includes(ent.pagamento.bandeira); const np=(ent.pagamento.modalidade.match(/(\d+)x/)||[])[1];
+  if(cartao && np && +np>1){
+    const [{data:rl},{data:rc}]=await Promise.all([sb.rpc('calcular_negociacao',{p:montarEntradaNeg('loja')}),sb.rpc('calcular_negociacao',{p:montarEntradaNeg('cliente')})]);
+    const ganho=rc.mc-rl.mc, dMax=rc.k_marginal>0&&rc.receita>0?ganho/(rc.receita*rc.k_marginal):0;
+    $('#ngJC').innerHTML=`<h3>Juros pago pelo cliente × loja absorve (${np}x)</h3>
+      <table style="max-width:560px"><tr><th></th><th>Loja absorve</th><th>Juros do cliente</th></tr>
+      <tr><td>Custo do cartão para a loja</td><td>${brl(rl.custo_financeiro)}</td><td>${brl(rc.custo_financeiro)}</td></tr>
+      <tr><td>Margem de contribuição</td><td>${brl(rl.mc)} (${pct(rl.mc_pct)})</td><td><b>${brl(rc.mc)} (${pct(rc.mc_pct)})</b></td></tr></table>
+      <div class="item" style="margin-top:8px;background:#f3faf3">Com <b>juros do cliente</b> a loja ganha <b>${brl(ganho)}</b> a mais.
+        Dá para oferecer até <b>${pct(dMax)}</b> de desconto e ainda ter a mesma margem; oferecendo metade (<b>${pct(dMax/2)}</b>) o cliente paga menos e a loja ainda ganha ${brl(ganho/2)} a mais.
+        <div class="mut">Use no fechamento: negocie com o preço cheio e ofereça esse desconto só se o cliente aceitar o juros do cliente.</div></div>`;
+  } else $('#ngJC').innerHTML='<p class="mut">Escolha um cartão parcelado (2x ou mais) para ver a comparação com o "juros pago pelo cliente".</p>';
+}
+async function salvarNeg(status){
+  const {ent,r}=NEG.ultimo; const reg={capa_id:CAPA.c.id,orcamento_id:$('#ngOrc').value,loja_id:CAPA.c.loja_id,vendedor_id:EU.id,entrada:ent,resultado:r,status};
+  const q=NEG.id?sb.from('negociacoes').update(reg).eq('id',NEG.id).select().single():sb.from('negociacoes').insert(reg).select().single();
+  const {data,error}=await q; if(error) return erro(error); NEG.id=data.id;
+  if(status==='Fechada') await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',resumo:`Negociação fechada: ${brl(r.receita)} · MC ${pct(r.mc_pct)}`});
+  toast(status==='Fechada'?'Negociação fechada':'Negociação salva'); const keep=NEG.id; await abaNegoc(); NEG.id=null;
+}
+async function abrirNeg(id){
+  const {data:n}=await sb.from('negociacoes').select('*').eq('id',id).single(); if(!n) return;
+  const e=n.entrada; if(n.orcamento_id && [...$('#ngOrc').options].some(o=>o.value===n.orcamento_id)) $('#ngOrc').value=n.orcamento_id;
+  await carregarItensNeg();
+  $('#ngDesc').value=((e.desconto_pct||0)*100).toFixed(1); $('#ngFreteCli').value=e.frete_cliente||0; $('#ngArq').checked=!!e.arquiteto; $('#ngGoy').checked=!!e.goyases;
+  $('#ngEnt').value=e.pagamento?.entrada_valor||0; $('#ngBand').value=e.pagamento?.bandeira||'PIX'; $('#ngBand').onchange(); $('#ngMod').value=e.pagamento?.modalidade||''; $('#ngModo').value=e.pagamento?.modo||'loja'; $('#ngModo').onchange();
+  (e.itens||[]).forEach(x=>{const i=NEG.itens.find(y=>y.ref===x.ref); if(i){ i.custo_un=x.custo_un; i.frete_un=x.frete_un; const auto=Math.round(i.preco_orc*(1-(e.desconto_pct||0))*100)/100; i.preco_final=Math.abs(x.preco_total-auto)>0.01?x.preco_total:null; }});
+  NEG.id=n.id; await recalc(); toast('Negociação carregada'); window.scrollTo(0,0);
+}
+function proposta(){
+  const {ent,r}=NEG.ultimo; const o=NEG.orcs.find(x=>x.id===$('#ngOrc').value)||{};
+  const byRef={}; r.itens.forEach(x=>byRef[x.ref]=x);
+  const ambs=[...new Set(NEG.itens.map(i=>i.ambiente||''))];
+  const np=(ent.pagamento.modalidade.match(/(\d+)x/)||[])[1];
+  const w=window.open('','_blank');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Proposta Dom Gabriel</title><style>body{font-family:Arial;max-width:800px;margin:20px auto;color:#1d2733;padding:0 12px}h1{color:#1F3A5F;margin:0}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid #ddd;text-align:left}th{color:#666;font-weight:normal}.tot{font-size:20px;color:#1F3A5F}.box{border:1px solid #C9A227;border-radius:8px;padding:12px;margin-top:14px;background:#fffaf0}@media print{button{display:none}}</style></head><body>
+    <h1>Dom Gabriel Acabamentos</h1><p>Proposta para <b>${esc(o.cliente_pdf||'')}</b> · orçamento ${esc(o.numero_santri||'')} · ${new Date().toLocaleDateString('pt-BR')}${o.data_validade?' · válida até '+dBR(o.data_validade):''}</p>
+    ${ambs.map(a=>`<h3 style="color:#1F3A5F;margin-bottom:4px">${esc(a)}</h3><table><tr><th>Produto</th><th>Qtd</th><th style="text-align:right">Valor</th></tr>${NEG.itens.filter(i=>(i.ambiente||'')===a).map(i=>`<tr><td>${esc(i.descricao)}</td><td>${i.quantidade} ${esc(i.unidade||'')}</td><td style="text-align:right">${brl(byRef[i.ref]?.preco_total)}</td></tr>`).join('')}</table>`).join('')}
+    ${ent.frete_cliente?`<p>Frete: ${brl(ent.frete_cliente)}</p>`:''}
+    <p class="tot">Total: <b>${brl(r.receita)}</b>${ent.desconto_pct?` <span style="font-size:14px;color:#2e7d32">(já com ${(ent.desconto_pct*100).toFixed(1)}% de desconto)</span>`:''}</p>
+    ${ent.pagamento.entrada_valor?`<p>Entrada: ${brl(ent.pagamento.entrada_valor)}</p>`:''}
+    ${r.parcela_cliente?`<div class="box"><b>Parcelado no cartão: ${np}x de ${brl(r.parcela_cliente)}*</b><br>O valor da compra continua o preço à vista (${brl(r.restante)}); os juros do parcelamento são da operadora do cartão, e não entram na nota.<br><small>*Parcela estimada; o valor exato aparece na maquininha conforme o seu cartão.</small></div>`:
+      (np&&+np>1?`<div class="box"><b>Parcelado em ${np}x sem juros: ${np}x de ${brl((r.restante||0)/np)}</b></div>`:'')}
+    <p style="margin-top:20px"><button onclick="print()">Imprimir / salvar PDF</button></p></body></html>`);
+  w.document.close();
+}
+
+// ================= PARÂMETROS (direção) =================
+async function telaParametros(){
+  if(!ehDirecao()) return telaLista();
+  const [{data:ps},{data:tx}]=await Promise.all([sb.from('parametros_loja').select('*').order('loja_id'),sb.from('taxas_cartao').select('*').eq('ativo',true).order('bandeira').order('id')]);
+  const campos=[['pis','PIS',1],['cofins','COFINS',1],['icms_debito','ICMS débito (venda)',1],['icms_credito_padrao','ICMS crédito padrão (compra)',1],['comissao_vendedor','Comissão vendedor',1],
+    ['rt_arquiteto','RT arquiteto',1],['goyases','Goyases / Metropolitano',1],['taxa_loja_juros_cliente','Taxa da maquininha no "juros do cliente" (vazio = crédito 1x)',1],
+    ['taxa_juros_cliente_am','Juros ao cliente % a.m. (estimativa p/ parcela)',1],['frete_rs_ton_ceramica','Frete R$/ton cerâmica',0],['frete_rs_ton_argamassa','Frete R$/ton argamassa',0],['pe_mc_mensal','Ponto de equilíbrio (MC R$/mês)',0]];
+  const bandeiras=[...new Set((tx||[]).map(t=>t.bandeira))];
+  $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Parâmetros</h2>
+  <div class="g2">${(ps||[]).map(p=>`<div class="card"><h3>${esc(LOJAS.find(l=>l.id===p.loja_id)?.codigo)} – ${esc(LOJAS.find(l=>l.id===p.loja_id)?.nome)}</h3>
+    ${campos.map(([f,t,isPct])=>`<label>${t}${isPct?' (%)':''}</label><input type="number" step="0.01" data-par="${p.loja_id}" data-f="${f}" data-pct="${isPct}" value="${p[f]==null?'':isPct?(p[f]*100).toFixed(2):p[f]}">`).join('')}
+    ${p.observacao?`<p class="mut">${esc(p.observacao)}</p>`:''}</div>`).join('')}</div>
+  <div class="card"><h3>Taxas de cartão</h3>
+    <p class="mut">Alterar uma taxa cria uma nova versão com a data de hoje (as negociações antigas ficam com a taxa da época).</p>
+    ${bandeiras.map(b=>`<details><summary><b>${esc(b)}</b> (${tx.filter(t=>t.bandeira===b).length})</summary><table>${tx.filter(t=>t.bandeira===b).map(t=>`<tr><td>${esc(t.modalidade)}</td><td><input type="number" step="0.01" style="width:110px" data-tx="${t.id}" value="${(t.taxa*100).toFixed(2)}"> %</td><td class="mut">desde ${dBR(t.vigente_desde)}</td></tr>`).join('')}</table></details>`).join('')||'<p class="mut">Nenhuma taxa cadastrada.</p>'}
+    <details style="margin-top:12px"><summary><b>Colar tabela nova inteira</b> (substitui todas as taxas)</summary>
+      <p class="mut">Uma linha por taxa: <code>Bandeira;Modalidade;Taxa%</code> — ex.: <code>Visa/Master;Crédito 03x;5,12</code>. Dá para copiar direto do Excel (colunas separadas por tabulação também funcionam).</p>
+      <textarea id="txCola" style="min-height:160px"></textarea><button class="gold" id="txSubst" style="margin-top:8px">Substituir taxas</button></details></div>`;
+  document.querySelectorAll('[data-par]').forEach(el=>el.onchange=async()=>{let v=el.value===''?null:Number(el.value.replace(',','.'));if(v!=null&&el.dataset.pct==='1')v=v/100;
+    const {error}=await sb.from('parametros_loja').update({[el.dataset.f]:v,atualizado_em:new Date().toISOString()}).eq('loja_id',el.dataset.par);if(error)return erro(error);toast('Salvo ✓');});
+  document.querySelectorAll('[data-tx]').forEach(el=>el.onchange=async()=>{const old=tx.find(t=>t.id==el.dataset.tx);const v=Number(el.value.replace(',','.'))/100;
+    const {error:e1}=await sb.from('taxas_cartao').insert({bandeira:old.bandeira,modalidade:old.modalidade,parcelas:old.parcelas,taxa:v});if(e1)return erro(e1);
+    await sb.from('taxas_cartao').update({ativo:false}).eq('id',old.id); toast('Taxa atualizada'); telaParametros();});
+  $('#txSubst').onclick=async()=>{
+    const linhas=$('#txCola').value.split(/\r?\n/).map(l=>l.split(/;|\t/).map(x=>x.trim())).filter(l=>l.length>=3&&l[0]&&l[2]);
+    if(!linhas.length) return toast('Nenhuma linha válida');
+    const regs=linhas.map(([b,m,t])=>({bandeira:b,modalidade:m,parcelas:(m.match(/(\d+)x/)||[])[1]?+(m.match(/(\d+)x/)[1]):null,taxa:Number(String(t).replace('%','').replace(',','.'))/(String(t).includes('%')||Number(String(t).replace(',','.'))>1?100:1)}));
+    if(!confirm(`Substituir todas as taxas por ${regs.length} linhas?`)) return;
+    const {error:e1}=await sb.from('taxas_cartao').update({ativo:false}).eq('ativo',true); if(e1) return erro(e1);
+    const {error:e2}=await sb.from('taxas_cartao').insert(regs); if(e2) return erro(e2); toast(regs.length+' taxas cadastradas'); telaParametros(); };
 }
 
 // ---------- Linha do tempo ----------
