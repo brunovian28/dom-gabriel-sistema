@@ -784,6 +784,7 @@ async function abaNegoc(){
     <div><label>Modalidade</label><select id="ngMod"></select></div>
     <div id="ngModoBox"><label>Juros do parcelamento</label><select id="ngModo"><option value="loja">Loja absorve (sem juros para o cliente)</option><option value="cliente">Juros pago pelo cliente</option></select></div>
     <div id="ngJurosBox" class="hide"><label>Juros ao cliente (% ao mês, estimado)</label><input id="ngJuros" type="number" step="0.01"></div>
+    <div id="ngRepBox" class="hide"><label>Desconto da parte financeira dado ao cliente (% da taxa da maquininha)</label><input id="ngRep" type="number" step="1" min="0" max="100" value="100"></div>
   </div>${NEG.taxas.length?'':'<div class="aviso">Taxas de cartão ainda não cadastradas — a direção cadastra em Parâmetros.</div>'}</div>
   <div class="card"><h3>Itens</h3><div class="tbl" id="ngItens"></div></div>
   <div class="card" id="ngRes"></div>
@@ -797,9 +798,10 @@ async function abaNegoc(){
   $('#ngJuros').value=pars?((pars.taxa_juros_cliente_am*100).toFixed(2)):'2.99';
   const preencherMod=()=>{const b=$('#ngBand').value;const ms=NEG.taxas.filter(t=>t.bandeira===b).map(t=>t.modalidade);
     $('#ngMod').innerHTML=(ms.length?ms:['À vista']).map(m=>`<option>${esc(m)}</option>`).join('');
-    const cartao=!['PIX','Dinheiro','Boleto'].includes(b); $('#ngModoBox').classList.toggle('hide',!cartao); if(!cartao) $('#ngModo').value='loja'; $('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');};
+    const cartao=!['PIX','Dinheiro','Boleto'].includes(b); $('#ngModoBox').classList.toggle('hide',!cartao); if(!cartao) $('#ngModo').value='loja'; $('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente'); $('#ngRepBox').classList.toggle('hide',$('#ngModo').value!=='cliente');};
   $('#ngBand').onchange=()=>{preencherMod();recalc();}; preencherMod();
-  $('#ngModo').onchange=()=>{$('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');recalc();};
+  $('#ngModo').onchange=()=>{$('#ngJurosBox').classList.toggle('hide',$('#ngModo').value!=='cliente');$('#ngRepBox').classList.toggle('hide',$('#ngModo').value!=='cliente');recalc();};
+  $('#ngRep').onchange=()=>recalc();
   ['ngDesc','ngFreteCli','ngEnt','ngMod','ngJuros','ngArq','ngGoy'].forEach(i=>{$('#'+i).addEventListener('change',recalc);$('#'+i).addEventListener('input',()=>{clearTimeout(_negT);_negT=setTimeout(recalc,400)});});
   $('#ngOrc').onchange=carregarItensNeg;
   if($('#ngSalvar')){ $('#ngSalvar').onclick=()=>salvarNeg('Rascunho'); }
@@ -818,10 +820,10 @@ async function carregarItensNeg(){
     incluir:!(i.grupo_opcao!=null&&!i.escolhido)}));
   await recalc();
 }
-function montarEntradaNeg(modoForcado){
+function montarEntradaNeg(modoForcado,repForcado){
   const d=Number($('#ngDesc').value||0)/100;
   return {loja_id:CAPA.c.loja_id, arquiteto:$('#ngArq').checked, goyases:$('#ngGoy').checked, frete_cliente:Number($('#ngFreteCli').value||0), desconto_pct:d,
-    pagamento:{entrada_valor:Number($('#ngEnt').value||0), bandeira:$('#ngBand').value, modalidade:$('#ngMod').value, modo:modoForcado||$('#ngModo').value, juros_cliente_am:Number($('#ngJuros').value||0)/100},
+    pagamento:{entrada_valor:Number($('#ngEnt').value||0), bandeira:$('#ngBand').value, modalidade:$('#ngMod').value, modo:modoForcado||$('#ngModo').value, juros_cliente_am:Number($('#ngJuros').value||0)/100, repasse_desconto_financeiro:(repForcado??Math.min(Math.max(Number($('#ngRep').value||0),0),100)/100)},
     itens:NEG.itens.filter(i=>i.incluir).map(i=>({produto_id:i.produto_id, ref:i.ref, descricao:i.descricao, quantidade:i.quantidade,
       preco_total: i.preco_final!=null?i.preco_final:Math.round(i.preco_orc*(1-d)*100)/100, custo_un:i.custo_un, frete_un:i.frete_un}))};
 }
@@ -859,7 +861,8 @@ async function recalc(){
   const pe=mes?.pe_mc_mensal||0, fech=Number(mes?.mc_fechada||0), falta=Math.max(pe-fech,0);
   const lin=(t,v,neg=true)=>`<tr><td>${t}</td><td style="text-align:right">${neg&&v?'− ':''}${brl(v)}</td><td style="text-align:right" class="mut">${r.receita?pct(v/r.receita):''}</td></tr>`;
   $('#ngRes').innerHTML=`<h3>Resultado da venda <span class="mut" style="font-weight:normal;font-size:13px">· preços, impostos e taxas da loja ${esc(LOJAS.find(l=>l.id===CAPA.c.loja_id)?.codigo||'')}</span></h3>
-    <div class="kpis"><div class="kpi"><b>${brl(r.receita)}</b><span>valor da venda</span></div>
+    ${r.valor_tabela?`<div class="item" style="background:#f5f8fb">Juros pago pelo cliente: preço no formato "loja absorve" <b>${brl(r.valor_tabela)}</b> − parte financeira (${pct(r.taxa_modalidade*r.repasse_desconto_financeiro)} da parte parcelada) <b>${brl(r.desconto_financeiro)}</b> = <b>nota fiscal de ${brl(r.receita)}</b>. Impostos, comissão e RT são calculados sobre a nota; a loja paga na maquininha só a taxa de ${pct(r.taxa_cartao)}.</div>`:''}
+    <div class="kpis"><div class="kpi"><b>${brl(r.receita)}</b><span>${r.valor_tabela?'valor da nota (cliente paga os juros no cartão)':'valor da venda'}</span></div>
       <div class="kpi"><b style="color:${cor}">${brl(r.mc)}</b><span>margem de contribuição</span></div>
       <div class="kpi"><b style="color:${cor}">${pct(r.mc_pct)}</b><span>MC %</span></div>
       ${r.parcela_cliente?`<div class="kpi"><b>${r.parcelas}x ${brl(r.parcela_cliente)}</b><span>parcela estimada ao cliente</span></div>`:''}</div>
@@ -873,15 +876,24 @@ async function recalc(){
   // comparação juros do cliente
   const cartao=!['PIX','Dinheiro','Boleto'].includes(ent.pagamento.bandeira); const np=(ent.pagamento.modalidade.match(/(\d+)x/)||[])[1];
   if(cartao && np && +np>1){
-    const [{data:rl},{data:rc}]=await Promise.all([sb.rpc('calcular_negociacao',{p:montarEntradaNeg('loja')}),sb.rpc('calcular_negociacao',{p:montarEntradaNeg('cliente')})]);
-    const ganho=rc.mc-rl.mc, dMax=rc.k_marginal>0&&rc.receita>0?ganho/(rc.receita*rc.k_marginal):0;
+    const [{data:rl},{data:rc},{data:r0}]=await Promise.all([sb.rpc('calcular_negociacao',{p:montarEntradaNeg('loja')}),sb.rpc('calcular_negociacao',{p:montarEntradaNeg('cliente')}),sb.rpc('calcular_negociacao',{p:montarEntradaNeg('cliente',0)})]);
+    const {data:r1}=await sb.rpc('calcular_negociacao',{p:montarEntradaNeg('cliente',1)});
+    // repasse que deixa a margem igual à do "loja absorve" (a MC cai em linha reta com o desconto)
+    const repEq=r0.mc-r1.mc>0?Math.min(Math.max((r0.mc-rl.mc)/(r0.mc-r1.mc),0),1):0;
+    const descEq=(r1.desconto_financeiro||0)*repEq, ganho=rc.mc-rl.mc;
+    const linJ=(t,a,b)=>`<tr><td>${t}</td><td style="text-align:right">${a}</td><td style="text-align:right">${b}</td></tr>`;
     $('#ngJC').innerHTML=`<h3>Juros pago pelo cliente × loja absorve (${np}x)</h3>
-      <table style="max-width:560px"><tr><th></th><th>Loja absorve</th><th>Juros do cliente</th></tr>
-      <tr><td>Custo do cartão para a loja</td><td>${brl(rl.custo_financeiro)}</td><td>${brl(rc.custo_financeiro)}</td></tr>
-      <tr><td>Margem de contribuição</td><td>${brl(rl.mc)} (${pct(rl.mc_pct)})</td><td><b>${brl(rc.mc)} (${pct(rc.mc_pct)})</b></td></tr></table>
-      <div class="item" style="margin-top:8px;background:#f3faf3">Com <b>juros do cliente</b> a loja ganha <b>${brl(ganho)}</b> a mais.
-        Dá para oferecer até <b>${pct(dMax)}</b> de desconto e ainda ter a mesma margem; oferecendo metade (<b>${pct(dMax/2)}</b>) o cliente paga menos e a loja ainda ganha ${brl(ganho/2)} a mais.
-        <div class="mut">Use no fechamento: negocie com o preço cheio e ofereça esse desconto só se o cliente aceitar o juros do cliente.</div></div>`;
+      <table style="max-width:620px"><tr><th></th><th style="text-align:right">Loja absorve</th><th style="text-align:right">Juros do cliente</th></tr>
+      ${linJ('Valor da nota fiscal',brl(rl.receita),'<b>'+brl(rc.receita)+'</b>')}
+      ${linJ('Desconto dado ao cliente','—',brl(rc.desconto_financeiro)+' ('+pct(rc.valor_tabela?rc.desconto_financeiro/rc.valor_tabela:0)+')')}
+      ${linJ('Impostos',brl(rl.impostos),brl(rc.impostos))}
+      ${linJ('Comissão + RT + Goyases',brl(rl.comissao+rl.rt+rl.goyases),brl(rc.comissao+rc.rt+rc.goyases))}
+      ${linJ('Maquininha para a loja',brl(rl.custo_financeiro)+' ('+pct(rl.taxa_cartao)+')',brl(rc.custo_financeiro)+' ('+pct(rc.taxa_cartao)+')')}
+      ${linJ('<b>Margem de contribuição</b>','<b>'+brl(rl.mc)+' ('+pct(rl.mc_pct)+')</b>','<b style="color:'+(ganho>=0?'var(--ok)':'var(--quente)')+'">'+brl(rc.mc)+' ('+pct(rc.mc_pct)+')</b>')}</table>
+      <div class="item" style="margin-top:8px;background:${ganho>=0?'#f3faf3':'#fff4e0'}">${ganho>=0?`Assim a loja ganha <b>${brl(ganho)}</b> a mais do que no "loja absorve".`:`Atenção: dando esse desconto a loja ganha <b>${brl(-ganho)}</b> a menos do que no "loja absorve", porque ainda paga ${pct(rc.taxa_cartao)} na maquininha.`}
+        O desconto que deixa a margem igual é <b>${brl(descEq)}</b> (${pct(rc.valor_tabela?descEq/rc.valor_tabela:0)}, ou ${Math.round(repEq*100)}% da parte financeira); abaixo disso a loja ganha mais.
+        <div style="margin-top:6px"><b>Para falar com o cliente:</b> "Consigo fechar em ${brl(rc.receita)} na nota. Para isso passo no seu cartão em ${np}x com os juros do cartão por sua conta — no parcelado sem juros fica ${brl(rl.receita)}."</div>
+        ${rc.total_cliente_parcelado?`<div class="mut" style="margin-top:4px">Com juros de ${pct(ent.pagamento.juros_cliente_am)} a.m. (estimativa; quem define é o banco do cliente) o cliente pagaria ${np}x ${brl(rc.parcela_cliente)} = ${brl(rc.total_cliente_parcelado)} no total${rc.total_cliente_parcelado>rl.receita?' — mais que o parcelado sem juros; a vantagem para ele é o desconto se ele tiver juros baixos ou pagar de outra forma.':'.'}</div>`:''}</div>`;
   } else $('#ngJC').innerHTML='<p class="mut">Escolha um cartão parcelado (2x ou mais) para ver a comparação com o "juros pago pelo cliente".</p>';
 }
 async function salvarNeg(status){
@@ -896,7 +908,7 @@ async function abrirNeg(id){
   const e=n.entrada; if(n.orcamento_id && [...$('#ngOrc').options].some(o=>o.value===n.orcamento_id)) $('#ngOrc').value=n.orcamento_id;
   await carregarItensNeg();
   $('#ngDesc').value=((e.desconto_pct||0)*100).toFixed(1); $('#ngFreteCli').value=e.frete_cliente||0; $('#ngArq').checked=!!e.arquiteto; $('#ngGoy').checked=!!e.goyases;
-  $('#ngEnt').value=e.pagamento?.entrada_valor||0; $('#ngBand').value=e.pagamento?.bandeira||'PIX'; $('#ngBand').onchange(); $('#ngMod').value=e.pagamento?.modalidade||''; $('#ngModo').value=e.pagamento?.modo||'loja'; $('#ngModo').onchange();
+  $('#ngEnt').value=e.pagamento?.entrada_valor||0; $('#ngBand').value=e.pagamento?.bandeira||'PIX'; $('#ngBand').onchange(); $('#ngMod').value=e.pagamento?.modalidade||''; $('#ngModo').value=e.pagamento?.modo||'loja'; $('#ngRep').value=Math.round((e.pagamento?.repasse_desconto_financeiro??1)*100); $('#ngModo').onchange();
   NEG.itens.forEach(i=>i.incluir=(e.itens||[]).some(x=>x.ref===i.ref));
   (e.itens||[]).forEach(x=>{const i=NEG.itens.find(y=>y.ref===x.ref); if(i){ i.custo_un=x.custo_un; i.frete_un=x.frete_un; const auto=Math.round(i.preco_orc*(1-(e.desconto_pct||0))*100)/100; i.preco_final=Math.abs(x.preco_total-auto)>0.01?x.preco_total:null; }});
   NEG.id=n.id; await recalc(); toast('Negociação carregada'); window.scrollTo(0,0);
