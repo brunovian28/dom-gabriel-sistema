@@ -218,7 +218,7 @@ function novaCapa(){
     const {data:ob,error:e1}=await sb.from('obras').insert({loja_id:loja,endereco:$('#nEnd').value||null,criado_por:EU.id}).select().single(); if(e1) return erro(e1);
     const {data:c,error:e2}=await sb.from('capas').insert({loja_id:loja,obra_id:ob.id,vendedor_id:EU.id,tipo_entrada:$('#nTipo').value,origem:$('#nOrigem').value,origem_detalhe:$('#nDet').value||null}).select().single(); if(e2) return erro(e2);
     await sb.from('atividades').insert({capa_id:c.id,obra_id:ob.id,usuario_id:EU.id,loja_id:loja,tipo:$('#nTipo').value==='Prospecção ativa'?'Mapeamento de obra':'Visita do cliente à loja',resumo:'Abertura da capa'});
-    toast('Capa '+c.numero+' criada'); location.hash='#/capa/'+c.id;
+    toast('Capa '+c.numero+' criada'); if(SANTRI_LANCAR) abaAtual='ped'; location.hash='#/capa/'+c.id;
   };
 }
 
@@ -935,11 +935,13 @@ async function telaParametros(){
   const [{data:ps},{data:tx}]=await Promise.all([sb.from('parametros_loja').select('*').order('loja_id'),sb.from('taxas_cartao').select('*').eq('ativo',true).order('bandeira').order('id')]);
   const campos=[['pis','PIS',1],['cofins','COFINS',1],['icms_debito','ICMS débito (venda)',1],['icms_credito_padrao','ICMS crédito padrão (compra)',1],['comissao_vendedor','Comissão vendedor',1],
     ['rt_arquiteto','RT arquiteto',1],['goyases','Goyases / Metropolitano',1],['taxa_loja_juros_cliente','Taxa da maquininha no "juros do cliente" (vazio = crédito 1x)',1],
-    ['taxa_juros_cliente_am','Juros ao cliente % a.m. (estimativa p/ parcela)',1],['frete_rs_ton_ceramica','Frete R$/ton cerâmica',0],['frete_rs_ton_argamassa','Frete R$/ton argamassa',0],['pe_mc_mensal','Ponto de equilíbrio (MC R$/mês)',0]];
+    ['taxa_juros_cliente_am','Juros ao cliente % a.m. (estimativa p/ parcela)',1],['frete_rs_ton_ceramica','Frete R$/ton cerâmica',0],['frete_rs_ton_argamassa','Frete R$/ton argamassa',0],['pe_mc_mensal','Ponto de equilíbrio (MC R$/mês)',0],['imposto_venda_direta','Impostos sobre a comissão da venda direta',1]];
   const bandeiras=[...new Set((tx||[]).map(t=>t.bandeira))];
   $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Parâmetros</h2>
   <div class="g2">${(ps||[]).map(p=>`<div class="card"><h3>${esc(LOJAS.find(l=>l.id===p.loja_id)?.codigo)} – ${esc(LOJAS.find(l=>l.id===p.loja_id)?.nome)}</h3>
     ${campos.map(([f,t,isPct])=>`<label>${t}${isPct?' (%)':''}</label><input type="number" step="0.01" data-par="${p.loja_id}" data-f="${f}" data-pct="${isPct}" value="${p[f]==null?'':isPct?(p[f]*100).toFixed(2):p[f]}">`).join('')}
+    <label>Cobrar pedido não lançado a partir de</label><input type="date" data-pard="${p.loja_id}" value="${p.pendencias_desde||''}">
+    <p class="mut" style="margin:2px 0 0">Vendas do Santri fechadas desde esta data sem pedido no sistema aparecem como pendência para o vendedor.</p>
     ${p.observacao?`<p class="mut">${esc(p.observacao)}</p>`:''}</div>`).join('')}</div>
   <div class="card"><h3>Taxas de cartão</h3>
     <p class="mut">Alterar uma taxa cria uma nova versão com a data de hoje (as negociações antigas ficam com a taxa da época).</p>
@@ -949,6 +951,8 @@ async function telaParametros(){
       <textarea id="txCola" style="min-height:160px"></textarea><button class="gold" id="txSubst" style="margin-top:8px">Substituir taxas</button></details></div>`;
   document.querySelectorAll('[data-par]').forEach(el=>el.onchange=async()=>{let v=el.value===''?null:Number(el.value.replace(',','.'));if(v!=null&&el.dataset.pct==='1')v=v/100;
     const {error}=await sb.from('parametros_loja').update({[el.dataset.f]:v,atualizado_em:new Date().toISOString()}).eq('loja_id',el.dataset.par);if(error)return erro(error);toast('Salvo ✓');});
+  document.querySelectorAll('[data-pard]').forEach(el=>el.onchange=async()=>{
+    const {error}=await sb.from('parametros_loja').update({pendencias_desde:el.value||null,atualizado_em:new Date().toISOString()}).eq('loja_id',el.dataset.pard);if(error)return erro(error);toast('Salvo ✓');});
   document.querySelectorAll('[data-tx]').forEach(el=>el.onchange=async()=>{const old=tx.find(t=>t.id==el.dataset.tx);const v=Number(el.value.replace(',','.'))/100;
     const {error:e1}=await sb.from('taxas_cartao').insert({bandeira:old.bandeira,modalidade:old.modalidade,parcelas:old.parcelas,taxa:v});if(e1)return erro(e1);
     await sb.from('taxas_cartao').update({ativo:false}).eq('id',old.id); toast('Taxa atualizada'); telaParametros();});
@@ -962,7 +966,8 @@ async function telaParametros(){
 }
 
 // ---------- Pedido (PDF do pedido do Santri = a venda de verdade) ----------
-let PED=null;
+let PED=null, SANTRI_LANCAR=null, PEND_SANTRI=[];
+const fmtNum=n=>Number(n).toLocaleString('pt-BR');
 const normCond=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 async function abaPed(){
   const [{data:peds},{data:conds},{data:tx},{data:orcs},{data:arq}]=await Promise.all([
@@ -971,10 +976,12 @@ async function abaPed(){
     sb.from('taxas_cartao').select('bandeira,modalidade').eq('ativo',true).order('id'),
     sb.from('orcamentos').select('id,numero_santri,versao,status').eq('capa_id',CAPA.c.id),
     sb.from('obra_pessoas').select('papel').eq('obra_id',CAPA.ob.id).eq('papel','Arquiteto / designer')]);
-  const abrir=PED?.abrir||null; PED={abrir,peds:peds||[],conds:conds||[],tx:tx||[],orcs:orcs||[],temArq:(arq||[]).length>0||!!CAPA.ob.escritorio_id,novo:null};
+  const abrir=PED?.abrir||null; PED={abrir,peds:peds||[],conds:conds||[],tx:tx||[],orcs:orcs||[],temArq:(arq||[]).length>0||!!CAPA.ob.escritorio_id,novo:null,vs:{}};
+  if(PED.peds.length){ const {data:vsp}=await sb.from('vendas_santri').select('pedido_id,numero,vlr_liquido').in('pedido_id',PED.peds.map(p=>p.id)); (vsp||[]).forEach(x=>PED.vs[x.pedido_id]=x); }
   $('#aba').innerHTML=`
+   ${CAPA.podeEditar?'<div id="pedSantri"></div>':''}
    ${CAPA.podeEditar?`<div class="card"><h3>Subir pedido do Santri</h3>
-     <p class="mut" style="margin-top:-4px">Quando o cliente fechar, lance o pedido no Santri e suba o PDF aqui. O sistema liga o pedido ao orçamento de mesmo número, calcula a margem real e marca a capa como ganha.</p>
+     <p class="mut" style="margin-top:-4px">Quando o cliente fechar, lance o pedido no Santri e suba o PDF aqui (ou use o quadro acima, se a venda já veio no relatório do Santri). O sistema liga o pedido ao orçamento de mesmo número, calcula a margem real e marca a capa como ganha.</p>
      <div id="pedDrop" class="drop" style="border:2px dashed #aab4c0;border-radius:10px;padding:24px;text-align:center;cursor:pointer;color:var(--mut)">Arraste o PDF do pedido aqui ou clique para escolher</div>
      <input type="file" id="pedFile" accept="application/pdf" class="hide"><div id="pedRev"></div></div>`:''}
    <div class="card"><h3>Pedidos desta capa</h3>${listaPeds()}</div>`;
@@ -982,14 +989,58 @@ async function abaPed(){
     d.ondragover=e=>{e.preventDefault();d.style.borderColor='var(--gold)'}; d.ondragleave=()=>d.style.borderColor='#aab4c0';
     d.ondrop=e=>{e.preventDefault();d.style.borderColor='#aab4c0';if(e.dataTransfer.files[0])lerPedido(e.dataTransfer.files[0])};
     $('#pedFile').onchange=e=>{if(e.target.files[0])lerPedido(e.target.files[0])}; }
-  ligarListaPeds();
+  ligarListaPeds(); santriDaCapa();
+}
+// vendas do Santri (importadas) deste cliente que ainda não têm pedido lançado
+async function santriDaCapa(){
+  const box=$('#pedSantri'); if(!box) return;
+  const digs=s=>String(s||'').replace(/\D/g,'');
+  const nums=[...new Set(PED.orcs.map(o=>digs(o.numero_santri)).filter(Boolean))];
+  const {data:vs}=await sb.from('obra_pessoas').select('pessoa:pessoas(codigo_santri)').eq('obra_id',CAPA.ob.id);
+  const cods=[...new Set((vs||[]).map(v=>v.pessoa?.codigo_santri).filter(Boolean))];
+  const base=()=>sb.from('vendas_santri').select('id,numero,data_fechamento,cliente_nome,vendedor_santri,vlr_liquido').eq('tipo','PED').is('pedido_id',null).eq('loja_id',CAPA.c.loja_id);
+  let lista=[];
+  if(nums.length){ const {data}=await base().in('numero',nums); lista=lista.concat(data||[]); }
+  if(cods.length){ const {data}=await base().in('cliente_codigo',cods).order('data_fechamento',{ascending:false}).limit(20); lista=lista.concat(data||[]); }
+  if(SANTRI_LANCAR){ const {data}=await base().eq('id',SANTRI_LANCAR); lista=lista.concat(data||[]); }
+  const vis=new Set(); lista=lista.filter(v=>!vis.has(v.id)&&vis.add(v.id));
+  box.innerHTML=`<div class="card"><h3>Vendas do Santri deste cliente ainda sem pedido</h3>
+    ${lista.length?`<p class="mut" style="margin-top:-4px">Estas vendas já estão no Santri. Lance aqui para completar a capa do pedido (condição de pagamento, entrega, datas) — não precisa do PDF.</p>
+    <div class="tbl"><table><tr><th>Pedido</th><th>Fechamento</th><th>Cliente</th><th>Vendedor</th><th style="text-align:right">Valor</th><th></th></tr>
+    ${lista.map(v=>`<tr><td><b>${esc(fmtNum(v.numero))}</b></td><td>${dBR(v.data_fechamento)}</td><td>${esc(v.cliente_nome||'')}</td><td>${esc((v.vendedor_santri||'').split(' ')[0])}</td><td style="text-align:right">${brl(v.vlr_liquido)}</td><td><button class="gold" data-vsl="${v.id}">Lançar com os dados do Santri</button></td></tr>`).join('')}</table></div>`
+    :'<p class="mut" style="margin-top:-4px">Nenhuma venda do Santri pendente para este cliente.</p>'}
+    <div class="linha" style="margin-top:8px"><input id="vsNum" placeholder="Nº do pedido no Santri" style="max-width:200px" inputmode="numeric"><button class="sec" id="vsBuscar">Buscar pelo número</button></div></div>`;
+  box.querySelectorAll('[data-vsl]').forEach(b=>b.onclick=()=>lancarDoSantri(+b.dataset.vsl));
+  $('#vsBuscar').onclick=async()=>{ const n=digs($('#vsNum').value); if(!n) return;
+    const {data}=await sb.from('vendas_santri').select('id,pedido_id,loja_id').eq('tipo','PED').eq('numero',n);
+    const v=(data||[]).find(x=>x.loja_id===CAPA.c.loja_id)||(data||[])[0];
+    if(!v) return toast('Pedido não encontrado nas vendas importadas do Santri');
+    if(v.pedido_id) return toast('Este pedido já foi lançado'); if(v.loja_id!==CAPA.c.loja_id) return toast('Este pedido é da outra loja');
+    lancarDoSantri(v.id); };
+  if(SANTRI_LANCAR&&lista.some(v=>v.id===SANTRI_LANCAR)){ const id=SANTRI_LANCAR; SANTRI_LANCAR=null; lancarDoSantri(id); }
+}
+async function lancarDoSantri(id){
+  const [{data:v},{data:its}]=await Promise.all([sb.from('vendas_santri').select('*').eq('id',id).single(), sb.from('vendas_santri_itens').select('*').eq('venda_id',id).order('ordem')]);
+  if(!v) return toast('Venda não encontrada');
+  const ids=[...new Set((its||[]).map(i=>i.produto_id).filter(Boolean))];
+  const {data:pr}=ids.length?await sb.from('produtos').select('id,unidade,codigo_original').in('id',ids):{data:[]};
+  const P={}; (pr||[]).forEach(x=>P[x.id]=x);
+  const r={cabecalho:{numero:fmtNum(v.numero),data_fechamento:(v.data_fechamento||'').slice(0,10),data_emissao:null,vendedor:v.vendedor_santri,
+      cliente:(v.cliente_codigo?fmtNum(v.cliente_codigo)+' - ':'')+(v.cliente_nome||''),cliente_codigo:v.cliente_codigo,condicao_pagamento:'',observacao:null,eh_pedido:true,
+      loja:LOJAS.find(l=>l.id===v.loja_id)?.codigo},
+    itens:(its||[]).map(i=>({produto_id:i.produto_id,codigo_original:P[i.produto_id]?.codigo_original||null,descricao:i.descricao,marca:i.marca,unidade:P[i.produto_id]?.unidade||'',
+      quantidade:Number(i.quantidade),preco_unitario:Number(i.quantidade)?Number(i.total_liquido)/Number(i.quantidade):Number(i.total_liquido),total:Number(i.total_liquido),ambiente:null})),
+    total_geral:Number(v.vlr_liquido),totais:{'Total produtos':v.vlr_produtos,'Valor desconto':v.desconto||0}};
+  await revisarPedido(r,null,v); $('#pedRev').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function listaPeds(){
   if(!PED.peds.length) return '<p class="mut">Nenhum pedido ainda.</p>';
   return `<div class="tbl"><table><tr><th>Pedido</th><th>Fechamento</th><th>Condição</th><th style="text-align:right">Total</th><th style="text-align:right">Margem de contribuição</th><th>Situação</th><th></th></tr>
   ${PED.peds.map(p=>{const r=p.resultado||{};return `<tr style="${p.status==='Cancelado'?'opacity:.5':''}"><td><b>${esc(p.numero_santri)}</b>${p.orcamento_id?'':' <span class="mut">(sem orçamento)</span>'}</td><td>${dBR(p.data_fechamento)}</td>
     <td>${esc(p.condicao_texto||'')}${p.bandeira&&p.bandeira!=='Boleto'?' <span class="mut">· '+esc(p.bandeira)+'</span>':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td>
-    <td style="text-align:right"><b>${brl(r.mc)}</b> <span class="mut">${pct(r.mc_pct)}</span></td><td>${esc(p.status)}</td>
+    <td style="text-align:right"><b>${brl(r.mc)}</b> <span class="mut">${pct(r.mc_pct)}</span></td><td>${esc(p.status)}${(()=>{const v=PED.vs[p.id]; if(p.status==='Cancelado') return '';
+      if(!v) return '<div class="mut" style="font-size:11px">ainda não veio do Santri</div>';
+      return Math.abs(Number(v.vlr_liquido)-Number(p.total_pedido||0))>1?`<div class="atras" style="font-size:11px">Santri: ${brl(v.vlr_liquido)}</div>`:'<div class="mut" style="font-size:11px">✓ confere com o Santri</div>';})()}</td>
     <td style="white-space:nowrap">${p.arquivo_path?`<button class="link" data-ppdf="${esc(p.arquivo_path)}">PDF</button>`:''} <button class="sec" data-pcapa="${p.id}">Capa do pedido</button> <button class="link" data-pver="${p.id}">itens</button>
       ${ehDirecao()&&p.status!=='Cancelado'?`<button class="link" style="color:#b33" data-pcanc="${p.id}">cancelar</button>`:''}</td></tr>
     <tr class="hide" id="pit_${p.id}"><td colspan="7"></td></tr><tr><td colspan="7" style="padding:0;border:none"><div id="capa_${p.id}"></div></td></tr>`}).join('')}</table></div>`;
@@ -1010,16 +1061,21 @@ async function lerPedido(file){
   let r; try{ const pdfjs=await carregarPdfjs(); r=await lerOrcamentoPDF(pdfjs,new Uint8Array(await file.arrayBuffer())); }catch(e){ $('#pedRev').innerHTML=`<div class="aviso">${esc(e.message)}</div>`; return; }
   const c=r.cabecalho;
   if(!c.eh_pedido){ $('#pedRev').innerHTML='<div class="aviso">Este PDF parece ser um <b>orçamento</b>, não um pedido (não tem "Data de fechamento"). Orçamentos vão na aba Orçamentos.</div>'; return; }
+  revisarPedido(r,file,null);
+}
+async function revisarPedido(r,file,santri){
+  const c=r.cabecalho;
   const lojaCod=LOJAS.find(l=>l.id===CAPA.c.loja_id)?.codigo;
   const avisos=[];
+  if(santri) avisos.push('Dados do relatório de vendas do Santri. Escolha a <b>condição de pagamento</b> e confira <b>arquiteto</b> e <b>Goyases</b> — é isso que completa a margem real.');
   if(c.loja&&lojaCod&&c.loja!==lojaCod) avisos.push(`O pedido é da loja <b>${esc(c.loja)}</b> e a capa é da loja <b>${esc(lojaCod)}</b>.`);
   const {data:dup}=await sb.from('pedidos').select('id,capa_id').eq('loja_id',CAPA.c.loja_id).eq('numero_santri',c.numero).neq('status','Cancelado');
   if(dup&&dup.length){ $('#pedRev').innerHTML=`<div class="aviso">O pedido ${esc(c.numero)} já foi lançado${dup[0].capa_id===CAPA.c.id?' nesta capa':' em outra capa'}.</div>`; return; }
   const orc=PED.orcs.filter(o=>o.numero_santri===c.numero).sort((a,b)=>(a.status==='Substituído (nova versão)')-(b.status==='Substituído (nova versão)'))[0]||null;
   if(!orc) avisos.push(`Não achei nesta capa o orçamento nº ${esc(c.numero)}. O pedido fica ligado só à capa (confira se é a capa certa).`);
   const cond=PED.conds.find(x=>normCond(x.nome)===normCond(c.condicao_pagamento))||null;
-  if(!cond) avisos.push(`A condição "${esc(c.condicao_pagamento||'')}" não está no cadastro de condições. Escolha a mais parecida abaixo.`);
-  PED.novo={file,r,orc,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
+  if(!cond&&!santri) avisos.push(`A condição "${esc(c.condicao_pagamento||'')}" não está no cadastro de condições. Escolha a mais parecida abaixo.`);
+  PED.novo={file,r,orc,santri,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
   const bands=[...new Set(PED.tx.map(t=>t.bandeira))];
   const tot=r.totais||{};
   $('#pedRev').innerHTML=`<div style="margin-top:12px">
@@ -1078,9 +1134,9 @@ async function salvarPedido(){
   if(prev&&prev>precisa) return toast('A previsão de entrega não pode passar da data que o cliente precisa');
   $('#pSalvar').disabled=true; const c=n.r.cabecalho, tot=n.r.totais||{};
   let path=null; const up=`${CAPA.c.id}/${Date.now()}_pedido_${(c.numero||'').replace(/\D/g,'')}.pdf`;
-  const {error:eUp}=await sb.storage.from('capas').upload(up,n.file,{contentType:'application/pdf'}); if(!eUp) path=up;
+  if(n.file){ const {error:eUp}=await sb.storage.from('capas').upload(up,n.file,{contentType:'application/pdf'}); if(!eUp) path=up; }
   const reg={capa_id:CAPA.c.id,orcamento_id:n.orc?.id||null,loja_id:CAPA.c.loja_id,numero_santri:c.numero,data_fechamento:c.data_fechamento,data_emissao:c.data_emissao,
-    vendedor_santri:c.vendedor,cliente_pdf:c.cliente,cliente_codigo:c.cliente_codigo,condicao_texto:c.condicao_pagamento,condicao_codigo:cd?.codigo||null,
+    vendedor_santri:c.vendedor,cliente_pdf:c.cliente,cliente_codigo:c.cliente_codigo,condicao_texto:c.condicao_pagamento||cd?.nome||null,condicao_codigo:cd?.codigo||null,
     entrada_valor:ent.pagamento.entrada_valor,bandeira:ent.pagamento.bandeira,modalidade:ent.pagamento.modalidade,taxa_manual:ent.pagamento.taxa??null,
     arquiteto:ent.arquiteto,goyases:ent.goyases,total_produtos:tot['Total produtos']??null,desconto:tot['Valor desconto']??0,total_pedido:n.r.total_geral,
     observacao:c.observacao,arquivo_path:path,resultado:n.res,criado_por:EU.id,data_cliente_precisa:precisa,previsao_entrega:prev,
@@ -1094,7 +1150,7 @@ async function salvarPedido(){
   if(n.orc) await sb.from('orcamentos').update({status:'Ganho'}).eq('id',n.orc.id);
   await sb.from('capas').update({status:'Ganha (virou pedido)'}).eq('id',CAPA.c.id); CAPA.c.status='Ganha (virou pedido)';
   await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',
-    resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||''}`});
+    resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||(cd?.nome)||''}${n.file?'':' (dados do Santri)'}`});
   await vincularClienteSantri(c); atualizarNomeCapa();
   toast('Pedido lançado — complete a capa do pedido'); PED.novo=null; PED.abrir=p.id; const keep=p.id; await abaPed(); if(!$('#capa_'+keep).innerHTML) capaPedido(keep); if(typeof atualizarResumo==='function') atualizarResumo();
 }
@@ -1214,7 +1270,37 @@ async function exportarCapas(pid){
 
 // ---------- Pedidos: painel de andamento e mercadoria parada ----------
 let PDF_={loja:0,local:'abertos'};
+async function pendenciasSantri(){
+  const {data:par}=await sb.from('parametros_loja').select('loja_id,pendencias_desde');
+  const ds=(par||[]).map(p=>p.pendencias_desde).filter(Boolean).sort()[0]; if(!ds) return '';
+  let q=sb.from('vendas_santri').select('id,loja_id,numero,data_fechamento,cliente_nome,vendedor_santri,vlr_liquido').eq('tipo','PED').is('pedido_id',null).gte('data_fechamento',ds).order('data_fechamento');
+  if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
+  const {data,error}=await q.limit(500); if(error) return '';
+  let lista=(data||[]).filter(v=>{const p=(par||[]).find(x=>x.loja_id===v.loja_id); return !p?.pendencias_desde||v.data_fechamento.slice(0,10)>=p.pendencias_desde;});
+  const meu=EU.papel==='vendedor', nomeS=(EU.nome_santri||'').trim().toUpperCase();
+  if(meu&&nomeS) lista=lista.filter(v=>(v.vendedor_santri||'').trim().toUpperCase()===nomeS);
+  PEND_SANTRI=lista; if(!lista.length) return '';
+  const podeLancar=!SETORES.includes(EU.papel);
+  return `<div class="card" style="border-left:4px solid var(--quente)"><h3>${meu&&nomeS?'Seus pedidos':'Pedidos'} do Santri ainda não lançados no sistema (${lista.length})</h3>
+   <p class="mut" style="margin-top:-4px">Venda fechada no Santri sem capa do pedido aqui: fica sem data de entrega, sem acompanhamento e com a margem incompleta.${podeLancar?' Clique em <b>Lançar</b> para abrir a capa do cliente e completar.':''}${meu&&!nomeS?' <b>Seu nome do Santri ainda não está ligado ao seu usuário — a lista mostra a loja toda. Peça à direção.</b>':''}</p>
+   <div class="tbl"><table><tr><th>Pedido</th><th>Fechamento</th><th>Cliente</th><th>Vendedor</th><th style="text-align:right">Valor</th>${podeLancar?'<th></th>':''}</tr>
+   ${lista.map(v=>`<tr><td><b>${esc(fmtNum(v.numero))}</b> <span class="mut">${esc(LOJAS.find(l=>l.id===v.loja_id)?.codigo||'')}</span></td><td>${dBR(v.data_fechamento)}</td><td>${esc(v.cliente_nome||'')}</td><td>${esc((v.vendedor_santri||'').split(' ')[0])}</td><td style="text-align:right">${brl(v.vlr_liquido)}</td>${podeLancar?`<td><button class="gold" data-vlanc="${v.id}">Lançar</button></td>`:''}</tr>`).join('')}
+   </table></div></div>`;
+}
+async function abrirParaLancar(id){
+  const {data:v}=await sb.from('vendas_santri').select('numero,cliente_codigo,cliente_nome,loja_id').eq('id',id).single(); if(!v) return;
+  let capas=[];
+  const {data:os}=await sb.from('orcamentos').select('capa_id').in('numero_santri',[v.numero,fmtNum(v.numero)]); capas=(os||[]).map(o=>o.capa_id);
+  if(v.cliente_codigo){ const {data:ps}=await sb.from('pessoas').select('id').eq('codigo_santri',v.cliente_codigo);
+    if(ps&&ps.length){ const {data:ops}=await sb.from('obra_pessoas').select('obra_id').in('pessoa_id',ps.map(p=>p.id));
+      if(ops&&ops.length){ const {data:cs}=await sb.from('capas').select('id').in('obra_id',ops.map(o=>o.obra_id)).eq('loja_id',v.loja_id).order('criado_em',{ascending:false}); capas=capas.concat((cs||[]).map(c=>c.id)); } } }
+  capas=[...new Set(capas)]; SANTRI_LANCAR=id;
+  if(capas.length){ abaAtual='ped'; location.hash='#/capa/'+capas[0]; return; }
+  if(!confirm(`Não achei capa para ${v.cliente_nome||'este cliente'} (pedido ${fmtNum(v.numero)}). Criar uma capa nova para lançar o pedido?`)){ SANTRI_LANCAR=null; return; }
+  location.hash='#/nova';
+}
 async function telaPedidos(){
+  const pend=await pendenciasSantri();
   let q=sb.from('pedidos').select('id,capa_id,loja_id,numero_santri,cliente_pdf,vendedor_santri,data_fechamento,data_cliente_precisa,previsao_entrega,guarda_ate,local_mercadoria,total_pedido,status,no_deposito_em,na_transportadora_em').neq('status','Cancelado').order('data_fechamento');
   if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
   const {data,error}=await q.limit(1000); if(error) return erro(error);
@@ -1225,7 +1311,7 @@ async function telaPedidos(){
   const soma=l=>abertos.filter(p=>p.local_mercadoria===l).reduce((s,p)=>s+Number(p.total_pedido||0),0);
   const venc=abertos.filter(p=>p.guarda_ate&&p.guarda_ate<h);
   const semData=abertos.filter(p=>!p.previsao_entrega);
-  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Pedidos e mercadoria</h2>
+  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Pedidos e mercadoria</h2>${pend}
    <div class="card"><div class="g3"><div><label>Loja</label><select id="pdLoja"><option value="0">Todas</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>
      <div><label>Mostrar</label><select id="pdLocal"><option value="abertos">Não entregues</option>${locais.map(l=>`<option>${esc(l)}</option>`).join('')}<option value="todos">Todos</option></select></div></div></div>
    <div class="kpis" style="margin-bottom:12px">${locais.filter(l=>l!=='Entregue').map(l=>`<div class="kpi" data-loc="${esc(l)}" style="cursor:pointer"><b>${abertos.filter(p=>p.local_mercadoria===l).length}</b><span>${esc(l)} · ${brl(soma(l))}</span></div>`).join('')}
@@ -1240,6 +1326,7 @@ async function telaPedidos(){
   $('#pdLocal').value=PDF_.local; $('#pdLocal').onchange=e=>{PDF_.local=e.target.value;telaPedidos();};
   document.querySelectorAll('[data-loc]').forEach(k=>k.onclick=()=>{PDF_.local=k.dataset.loc;telaPedidos();});
   document.querySelectorAll('[data-capa]').forEach(r=>r.onclick=()=>{abaAtual='ped';location.hash='#/capa/'+r.dataset.capa;});
+  document.querySelectorAll('[data-vlanc]').forEach(b=>b.onclick=()=>abrirParaLancar(+b.dataset.vlanc));
 }
 
 // ---------- Agenda (entregas previstas, datas-limite e guardas vencendo) ----------
@@ -1564,9 +1651,9 @@ function barraMeta(real,meta,{marca=null,marcaTxt='',proj=null}={}){
     ${meta?`<div title="meta" style="position:absolute;top:-3px;bottom:-3px;left:${w(meta)};width:2px;background:var(--txt)"></div>`:''}
     ${marca?`<div title="${esc(marcaTxt)}" style="position:absolute;top:-3px;bottom:-3px;left:${w(marca)};width:2px;background:var(--quente)"></div>`:''}</div>`;
 }
-function somaLojas(ls){ const s={}; const campos=['faturamento','mc','pedidos','pedidos_sem_vendedor','atividades','capas_novas','orcamentos','orcamentos_valor','ganhos','perdidos','carteira','carteira_qtd','quentes','vencidos','pe_mc_mensal','meta_faturamento','meta_mc','meta_atividades','meta_capas_novas'];
+function somaLojas(ls){ const s={}; const campos=['faturamento','mc','pedidos','pedidos_sem_vendedor','devolucoes','devolucoes_qtd','mc_parcial','vendas_pendentes','vendedores_sem_usuario','atividades','capas_novas','orcamentos','orcamentos_valor','ganhos','perdidos','carteira','carteira_qtd','quentes','vencidos','pe_mc_mensal','meta_faturamento','meta_mc','meta_atividades','meta_capas_novas'];
   campos.forEach(c=>{ const vs=ls.map(l=>l[c]).filter(v=>v!=null); s[c]=vs.length?vs.reduce((a,b)=>a+Number(b),0):null; });
-  s.codigo='PVA + RV'; s.nome='Ambas as lojas'; const pisos=ls.map(l=>l.meta_mc_pct_min).filter(v=>v!=null); s.meta_mc_pct_min=pisos.length?Math.max(...pisos):null; return s; }
+  s.codigo='PVA + RV'; s.nome='Ambas as lojas'; s.santri_ate=ls.map(l=>l.santri_ate).filter(Boolean).sort().at(-1)||null; const pisos=ls.map(l=>l.meta_mc_pct_min).filter(v=>v!=null); s.meta_mc_pct_min=pisos.length?Math.max(...pisos):null; return s; }
 
 async function telaPainel(){
   if(SETORES.includes(EU.papel)) return telaPedidos();
@@ -1601,7 +1688,7 @@ async function telaPainel(){
       ${linha(L.pe_mc_mensal,'#c62828','ponto de equilíbrio',acima==='meta'?18:0)}${L.meta_mc&&L.meta_mc!==L.pe_mc_mensal?linha(L.meta_mc,'#1d2733','meta',acima==='meta'?0:18):''}
       ${ac.length?`<polyline fill="none" stroke="#2c4f7c" stroke-width="2.5" points="${ac.map(([d,v])=>x(d)+','+y(v)).join(' ')}"/><circle cx="${x(ac.at(-1)[0])}" cy="${y(ac.at(-1)[1])}" r="4" fill="#2c4f7c"/>`:''}
       ${[1,10,20,nd].map(d=>`<text x="${x(d)}" y="${H-5}" font-size="12" fill="#6b7684" text-anchor="${d===1?'start':d===nd?'end':'middle'}">${d}</text>`).join('')}</svg>
-      <p class="mut">Linha azul = MC acumulada dos pedidos (por data de fechamento). Linhas tracejadas = quanto deveria estar acumulado em cada dia para chegar ao ponto de equilíbrio / meta.</p>`; };
+      <p class="mut">Linha azul = MC acumulada das vendas do Santri e dos pedidos lançados (por data de fechamento; devoluções descontam no dia em que aconteceram). Linhas tracejadas = quanto deveria estar acumulado em cada dia para chegar ao ponto de equilíbrio / meta.</p>`; };
   const vs=P.vendedores||[];
   const pisoV=v=>v.meta_mc_pct_min ?? P.lojas.find(l=>l.id===v.loja_id)?.meta_mc_pct_min;
   const celMeta=(real,meta,fmt=brl)=>`${fmt(real)}${meta?`<div class="mut" style="font-size:11px">${pct(real/meta)} de ${fmt(meta)}</div>`:''}`;
@@ -1609,9 +1696,12 @@ async function telaPainel(){
   $('#conteudo').innerHTML=`<div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Painel da gerência</h2>
      <div class="linha"><button class="sec" id="pnAnt">‹</button><b style="min-width:150px;text-align:center">${esc(nomeMes)}</b><button class="sec" id="pnProx">›</button>
      ${podeEditar?`<button class="gold" id="pnMetas">Metas do mês</button>`:''}</div></div>
-   <p class="mut">${esc(L.codigo)} – ${esc(L.nome)} · ${corrente?`dia útil ${duPass} de ${duTot} (seg a sáb)`:passado?'mês encerrado':'mês futuro'}${L.pedidos_sem_vendedor?` · <span class="atras">${L.pedidos_sem_vendedor} pedido(s) em capa sem vendedor</span>`:''}</p>
+   <p class="mut">${esc(L.codigo)} – ${esc(L.nome)} · ${corrente?`dia útil ${duPass} de ${duTot} (seg a sáb)`:passado?'mês encerrado':'mês futuro'}${L.pedidos_sem_vendedor?` · <span class="atras">${L.pedidos_sem_vendedor} pedido(s) em capa sem vendedor</span>`:''}${L.santri_ate?` · vendas do Santri até ${new Date(L.santri_ate).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:' · <span class="atras">nenhuma venda do Santri importada</span>'}</p>
+   ${(L.vendas_pendentes||L.mc_parcial||(ehDirecao()&&L.vendedores_sem_usuario))?`<div class="aviso">${[L.vendas_pendentes?`<b>${L.vendas_pendentes}</b> venda(s) do Santri sem pedido lançado no sistema — <a href="#/pedidos">ver em Pedidos</a>`:'',
+     L.mc_parcial?`a margem de <b>${L.mc_parcial}</b> pedido(s) do mês ainda está sem taxa de cartão e RT (completa quando o vendedor lança o pedido)`:'',
+     ehDirecao()&&L.vendedores_sem_usuario?`${L.vendedores_sem_usuario} vendedor(es) do Santri sem usuário ligado — <a href="#/usuarios">Usuários → Nome no Santri</a>`:''].filter(Boolean).join(' · ')}</div>`:''}
    <div class="g3" style="gap:12px;margin-bottom:12px">
-     ${blocoMeta('Faturamento (pedidos)',Number(L.faturamento),L.meta_faturamento)}
+     ${blocoMeta(L.devolucoes?`Faturamento (já descontadas ${brl(L.devolucoes)} de devoluções)`:'Faturamento',Number(L.faturamento),L.meta_faturamento)}
      ${blocoMeta('Margem de contribuição',Number(L.mc),L.meta_mc,{marca:L.pe_mc_mensal,marcaTxt:'ponto de equilíbrio'})}
      <div class="card" style="margin:0"><div class="mut">MC % média</div><div style="font-size:22px;font-weight:bold;color:${piso&&mcPct!=null&&mcPct<piso?'var(--quente)':'var(--navy)'}">${pct(mcPct)}</div>
        <div class="mut">${piso?`piso ${pct(piso)}${mcPct!=null&&mcPct<piso?' — abaixo do piso':''}`:'sem piso definido'}</div>
@@ -1621,13 +1711,13 @@ async function telaPainel(){
    <div class="card"><h3>Ranking dos vendedores</h3><div class="tbl"><table>
      <tr><th>Vendedor</th>${P.lojas.length>1?'<th>Loja</th>':''}<th style="text-align:right">Faturamento</th><th style="text-align:right">MC</th><th style="text-align:right">MC %</th><th style="text-align:right">Pedidos</th><th style="text-align:right">Contatos</th><th style="text-align:right">Capas novas</th><th style="text-align:right">Orçamentos</th><th style="text-align:right">Conversão</th><th style="text-align:right">Carteira</th></tr>
      ${vs.map((v,i)=>{const mp=pctN(v.mc,v.faturamento), pz=pisoV(v), cv=pctN(v.ganhos,v.ganhos+v.perdidos), eu=v.id===EU.id;
-       return `<tr style="${eu?'background:#fffbea':''}"><td>${i+1}. <b>${esc(v.nome)}</b></td>${P.lojas.length>1?`<td>${esc(LOJAS.find(l=>l.id===v.loja_id)?.codigo||'')}</td>`:''}
-       <td style="text-align:right">${celMeta(Number(v.faturamento),v.meta_faturamento)}</td><td style="text-align:right">${celMeta(Number(v.mc),v.meta_mc)}</td>
-       <td style="text-align:right" class="${pz&&mp!=null&&mp<pz?'atras':''}">${pct(mp)}</td><td style="text-align:right">${int(v.pedidos)}</td>
+       return `<tr style="${eu?'background:#fffbea':''}"><td>${i+1}. <b>${esc(v.nome)}</b>${v.sem_usuario?' <span class="mut" style="font-size:11px">(Santri)</span>':''}</td>${P.lojas.length>1?`<td>${esc(LOJAS.find(l=>l.id===v.loja_id)?.codigo||'')}</td>`:''}
+       <td style="text-align:right">${celMeta(Number(v.faturamento),v.meta_faturamento)}</td><td style="text-align:right">${celMeta(Number(v.mc),v.meta_mc)}${v.mc_parcial?`<div class="mut" style="font-size:11px">${v.mc_parcial} parcial</div>`:''}</td>
+       <td style="text-align:right" class="${pz&&mp!=null&&mp<pz?'atras':''}">${pct(mp)}</td><td style="text-align:right">${int(v.pedidos)}${v.pendentes?`<div class="atras" style="font-size:11px">${v.pendentes} sem lançar</div>`:''}</td>
        <td style="text-align:right">${celMeta(v.atividades,v.meta_atividades,int)}</td><td style="text-align:right">${celMeta(v.capas_novas,v.meta_capas_novas,int)}</td>
        <td style="text-align:right">${int(v.orcamentos)}</td><td style="text-align:right">${cv==null?'-':pct(cv)}<div class="mut" style="font-size:11px">${v.ganhos} ganho · ${v.perdidos} perdido</div></td>
        <td style="text-align:right">${brl(v.carteira)}${v.quentes?`<div style="font-size:11px"><span class="pill Quente">${v.quentes} quente</span></div>`:''}</td></tr>`}).join('')||`<tr><td colspan="11" class="mut">Nenhum vendedor com movimento no mês.</td></tr>`}
-   </table></div><p class="mut">Contatos = atividades da linha do tempo (visitas, ligações, WhatsApp, mapeamentos, follow-up), sem contar "Orçamento enviado". Conversão = orçamentos emitidos no mês que viraram pedido ÷ (ganhos + perdidos). MC % em vermelho = abaixo do piso.</p></div>
+   </table></div><p class="mut">Contatos = atividades da linha do tempo (visitas, ligações, WhatsApp, mapeamentos, follow-up), sem contar "Orçamento enviado". Conversão = orçamentos emitidos no mês que viraram pedido ÷ (ganhos + perdidos). MC % em vermelho = abaixo do piso. Faturamento e MC vêm das vendas do Santri (devoluções descontadas). "(Santri)" = vendedor ainda sem usuário no sistema; "parcial" = margem sem taxa de cartão e RT porque o pedido não foi lançado.</p></div>
    <div class="g2" style="gap:12px">
      <div class="card"><h3>Funil do mês</h3>
        ${[['Capas novas',L.capas_novas,L.meta_capas_novas],['Contatos de prospecção',L.atividades,L.meta_atividades],['Orçamentos emitidos',L.orcamentos,null],['Viraram pedido',L.ganhos,null],['Perdidos',L.perdidos,null]].map(([t,v,m])=>{const topo=Math.max(L.capas_novas||0,L.atividades||0,L.orcamentos||0,1);
@@ -1657,7 +1747,7 @@ async function editarMetas(P,lojaSel){
   const campos=[['faturamento','Faturamento R$',0],['mc','MC R$',0],['mc_pct_min','MC % mínima',1],['atividades','Contatos',0],['capas_novas','Capas novas',0]];
   const linhas=[]; lojasIds.forEach(l=>{ linhas.push({l,u:null,nome:'Loja (total)'}); (us||[]).filter(u=>u.loja_id===l).forEach(u=>linhas.push({l,u:u.id,nome:u.nome})); });
   // quem aparece no painel (ex.: admin que atende) também pode ter meta
-  (P.vendedores||[]).forEach(v=>{ if(lojasIds.includes(v.loja_id)&&!linhas.some(x=>x.u===v.id&&x.l===v.loja_id)) linhas.push({l:v.loja_id,u:v.id,nome:v.nome}); });
+  (P.vendedores||[]).forEach(v=>{ if(v.id&&lojasIds.includes(v.loja_id)&&!linhas.some(x=>x.u===v.id&&x.l===v.loja_id)) linhas.push({l:v.loja_id,u:v.id,nome:v.nome}); });
   const val=(r,f,pc)=>{const v=r?.[f]; return v==null?'':pc?(v*100).toFixed(1):v;};
   const nomeMes=ini.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
   $('#conteudo').innerHTML=`<div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Metas de ${esc(nomeMes)}</h2>
@@ -1681,17 +1771,20 @@ async function editarMetas(P,lojaSel){
 
 async function telaUsuarios(){
   if(!ehDirecao()) return telaLista();
-  const {data}=await sb.from('usuarios').select('*').order('ativo').order('nome');
+  const [{data},{data:vn}]=await Promise.all([sb.from('usuarios').select('*').order('ativo').order('nome'), sb.from('vendas_santri').select('vendedor_santri').order('data_fechamento',{ascending:false}).limit(3000)]);
+  const nomesSantri=[...new Set((vn||[]).map(x=>(x.vendedor_santri||'').trim()).filter(Boolean))].sort();
   const papeis=['vendedor','gerente','direcao','admin','logistica','financeiro','compras'];
   $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Usuários</h2>
   <p class="mut">Quem cria acesso entra bloqueado. Marque "Ativo", escolha a loja e o papel para liberar. Direção e admin veem as duas lojas; para outro papel ver as duas, marque "Vê as duas lojas".</p>
-  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th><th>Vê as duas lojas</th></tr>
+  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th><th>Vê as duas lojas</th><th>Nome no Santri</th></tr>
   ${(data||[]).map(u=>`<tr style="${u.ativo?'':'background:#fff8e6'}"><td>${esc(u.nome)}</td><td class="mut">${esc(u.email)}</td>
     <td><input type="checkbox" data-t="usuarios" data-f="ativo" data-id="${u.id}" ${u.ativo?'checked':''} ${u.id===EU.id?'disabled':''} style="width:22px;height:22px"></td>
     <td><select data-t="usuarios" data-f="loja_id" data-id="${u.id}"><option value=""></option>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===u.loja_id?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select></td>
     <td><select data-t="usuarios" data-f="papel" data-id="${u.id}" ${u.id===EU.id?'disabled':''}>${papeis.map(p=>`<option ${p===u.papel?'selected':''}>${p}</option>`).join('')}</select></td>
-    <td>${['direcao','admin'].includes(u.papel)?'<span class="mut">sempre</span>':`<input type="checkbox" data-t="usuarios" data-f="todas_lojas" data-id="${u.id}" ${u.todas_lojas?'checked':''} style="width:22px;height:22px">`}</td></tr>`).join('')}
-  </table></div>`;
+    <td>${['direcao','admin'].includes(u.papel)?'<span class="mut">sempre</span>':`<input type="checkbox" data-t="usuarios" data-f="todas_lojas" data-id="${u.id}" ${u.todas_lojas?'checked':''} style="width:22px;height:22px">`}</td>
+    <td><input data-t="usuarios" data-f="nome_santri" data-id="${u.id}" value="${esc(u.nome_santri||'')}" list="dlSantri" placeholder="como aparece no Santri" style="min-width:200px"></td></tr>`).join('')}
+  </table></div><datalist id="dlSantri">${nomesSantri.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+  <p class="mut">"Nome no Santri" liga as vendas importadas do Santri ao usuário (painel, ranking e pendências de pedido).</p>`;
   ligarCampos($('#conteudo'));
 }
 </script>

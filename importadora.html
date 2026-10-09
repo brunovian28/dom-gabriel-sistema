@@ -54,13 +54,17 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div class="card">
     <h2>1. Escolha o relatório</h2>
     <label>Tipo de arquivo</label>
-    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option></select>
+    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option><option value="vendas">Vendas e devoluções (Relação de vendas e devoluções – Analítico, com itens)</option></select>
     <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="">— escolha —</option><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select>
       <div class="legenda"><b>Como identificar a loja:</b> antes de importar, renomeie o arquivo colocando a sigla da loja no começo do nome:<br>
       <code>PVA_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Primavera do Leste<br>
       <code>RV_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Rio Verde<br>
       <small>O sistema escolhe a loja sozinho pelo nome. Sem a sigla, ele não deixa importar até você escolher a loja acima. Cada loja tem seus preços: importe os dois arquivos.</small></div></div>
-    <p class="mut">Próximos tipos: Vendas, Compras, Entradas, Contas a pagar/receber.</p>
+    <div id="vendasBox" class="hide legenda"><b>Como exportar no Santri:</b> Relatórios → Vendas → Vendas e devoluções. Na aba Principais:<br>
+      · Empresa da venda: as duas lojas · Tipo de movimento: <b>Não filtrar</b> · Status: <b>Todos</b> · Tipo de custo: <b>Custo comercial</b> · <b>Trazer itens</b> marcado<br>
+      · Período pela <b>Data de fechamento</b> (não pela data do orçamento)<br>
+      <small>Pode importar o mesmo período quantas vezes quiser: venda que já está no sistema não duplica, só é atualizada. Orçamentos e cancelados não entram.</small></div>
+    <p class="mut">Próximos tipos: Orçamentos cancelados, Compras, Contas a pagar/receber.</p>
     <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
   </div>
@@ -176,9 +180,9 @@ $('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
 let arquivoNome='';
 
 const TIPO=()=>$('tipo').value;
-const STG=()=>TIPO()==='precos'?'precos_staging':'produtos_staging';
+const STG=()=>TIPO()==='precos'?'precos_staging':TIPO()==='vendas'?'vendas_staging':'produtos_staging';
 $('lojaImp').onchange=()=>resetPassos();
-$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); resetPassos(); };
+$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); $('vendasBox').classList.toggle('hide',TIPO()!=='vendas'); resetPassos(); };
 async function lerArquivo(f){
   if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(TIPO()==='precos') $('lojaImp').value='';
   resetPassos(); arquivoNome=f.name;
@@ -193,6 +197,7 @@ async function lerArquivo(f){
       rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
     }
   }catch(e){ drop.innerHTML='Arraste o arquivo novamente'; $('passoColunas').classList.remove('hide'); return msg('colMsgs','Não consegui ler o arquivo: '+e.message,'err'); }
+  if(TIPO()==='vendas') return conferirVendas(rows,f);
   const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value);
   apelidos=ap||[];
   const nomesConhecidos=new Set(apelidos.map(a=>norm(a.apelido)));
@@ -245,6 +250,107 @@ function conferirColunas(){
   enviarStaging();
 }
 
+// ---------- Relatório "Relação de vendas e devoluções – Analítico" (com itens) ----------
+// Cada venda vem como: linha de cabeçalho (Tipo, Id, ...), linha do movimento (PED/DEV), cabeçalho dos itens e os itens.
+// No fim, o Santri escreve os filtros usados ("Filtros Selecionados").
+function lerRelatorioVendas(rows){
+  const nrm=s=>String(s??'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
+  const num=v=>{v=String(v??'').trim().replace('%','');if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
+  const dataHora=v=>{const m=String(v??'').trim().match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?/);if(!m)return null;const a=m[3].length===2?'20'+m[3]:m[3];return `${a}-${m[2]}-${m[1]}T${m[4]?(m[4].length===5?m[4]+':00':m[4]):'00:00:00'}`};
+  const txt=v=>{v=String(v??'').trim();return v||null};
+  const so=v=>String(v??'').replace(/\D/g,'')||null;
+  const LOJA={PVA:1,RV:2};
+  const CAB={tipo:'Tipo',id:'Id',vendedor:'Vendedor',cliente:'Cliente',tel:'Telefone cliente',whats:'Whatsapp do cliente',doc:'CPF/ CNPJ do cliente',email:'E-mail do cliente',
+    fech:'Data/hora fechamento',receb:'Data/hora recebimento',produtos:'Vlr. produtos',frete:'Frete',outras:'Out. desp.',desconto:'Desconto',liquido:'Vlr. líquido',
+    custo:'Custo',custo_compra:'Custo compra',prazo:'Prazo médio',ins:'Usuário inserção',comis_vd:'Vlr. comis. emp. vda direta',empresa:'Empresa',origem:'Pedido da devolução'};
+  const OBRIG=['tipo','id','vendedor','cliente','fech','liquido','empresa'];
+  const filtros=[], avisos=[], erros=[], movs=[]; let H=null, I=null, cur=null, semFech=0, semLoja=0, totalArquivo=null;
+  const mapear=(r,def)=>{const m={};for(const [k,n] of Object.entries(def)){const i=r.findIndex(c=>nrm(c)===nrm(n));if(i>=0)m[k]=i;}return m;};
+  let rodape=false;
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='tipo'&&nrm(r[1])==='id'){ if(!H) H=mapear(r,CAB); continue; }
+    if(!c0&&nrm(r[1])==='codigo'){ if(!I){ I=mapear(r,{codigo:'Código',nome:'Nome',marca:'Marca',qtd:'Quantidade',desc:'Juros/desc.',liquido:'Total líquido',custo:'Valor custo',custo_compra:'Custo compra'});
+        const pv=r.map((c,i)=>nrm(c)==='preco venda'?i:-1).filter(i=>i>=0); I.unit=pv[0]; I.total=pv[1]??pv[0]; } continue; }
+    if(!c0&&r.some(x=>nrm(x)==='total geral')){ const i=H?.liquido; if(i!=null) totalArquivo=num(r[i]); continue; }
+    const tipo=String(r[0]??'').trim().toUpperCase();
+    if((tipo==='PED'||tipo==='DEV')&&H){
+      const g=k=>H[k]!=null?r[H[k]]:'';
+      const emp=String(g('empresa')).match(/(PVA|RV)\s*$/i); const loja=emp?LOJA[emp[1].toUpperCase()]:null;
+      const fech=dataHora(g('fech'));
+      cur=null;
+      if(!loja){semLoja++;continue;}
+      if(!fech){semFech++;continue;}  // sem data de fechamento = orçamento, não é venda
+      const cli=String(g('cliente')).trim(); const mc=cli.match(/^([\d.]+)\s*-\s*(.*)$/);
+      cur={loja_id:loja,tipo,numero:so(g('id')),pedido_origem:tipo==='DEV'?so(g('origem')):null,vendedor:txt(g('vendedor')),usuario_insercao:txt(g('ins')),
+        cliente_codigo:mc?so(mc[1]):null,cliente_nome:mc?txt(mc[2]):txt(cli),cliente_doc:txt(g('doc')),cliente_telefone:txt(g('whats'))||txt(g('tel')),cliente_email:txt(g('email')),
+        data_fechamento:fech,data_recebimento:dataHora(g('receb')),vlr_produtos:num(g('produtos')),frete:num(g('frete')),outras_desp:num(g('outras')),
+        desconto:num(g('desconto')),vlr_liquido:num(g('liquido')),custo:num(g('custo')),custo_compra:num(g('custo_compra')),prazo_medio:num(g('prazo')),
+        comissao_vd:num(g('comis_vd')),itens:[]};
+      if(!cur.numero){cur=null;continue;}
+      movs.push(cur); continue;
+    }
+    if(!c0&&I&&cur&&/^\d+$/.test(String(r[I.codigo]??'').trim())){
+      const g=k=>I[k]!=null?r[I[k]]:'';
+      cur.itens.push({ordem:cur.itens.length+1,codigo:String(g('codigo')).trim(),descricao:txt(g('nome')),marca:txt(g('marca')),quantidade:num(g('qtd')),
+        preco_unitario:num(g('unit')),total_bruto:num(g('total')),juros_desc:num(g('desc')),total_liquido:num(g('liquido')),custo:num(g('custo')),custo_compra:num(g('custo_compra'))});
+    }
+  }
+  if(!H){ erros.push('Não encontrei o cabeçalho do relatório (colunas Tipo, Id, Vendedor…). É o relatório "Vendas e devoluções – Analítico"?'); return {movs:[],filtros,avisos,erros}; }
+  const falta=OBRIG.filter(k=>H[k]==null).map(k=>CAB[k]);
+  if(falta.length) erros.push('Faltam colunas no relatório: '+falta.join(', ')+'.');
+  if(!I) erros.push('O arquivo veio sem os itens dos pedidos. No Santri, marque "Trazer itens" antes de exportar.');
+  else if(I.codigo==null||I.qtd==null||I.liquido==null) erros.push('A tabela de itens está sem Código, Quantidade ou Total líquido.');
+  const f=filtros.map(nrm).join(' | ');
+  if(/cancelados/.test(f)) erros.push('Este arquivo foi exportado só com os <b>cancelados</b> (orçamentos cancelados). Para vendas, exporte com Status "Todos".');
+  if(/dt\. de cad\. do or/.test(f)) avisos.push('O período foi filtrado pela <b>data de cadastro do orçamento</b>. Pedidos fechados no período com orçamento feito antes ficam de fora. Prefira filtrar pela <b>data de fechamento</b>.');
+  if(/custo medio/.test(f)) avisos.push('Tipo de custo "Custo médio": itens vendidos por encomenda vêm sem custo de compra. O sistema usa a formação de preço da loja; se o produto não tiver formação, fica sem custo. Prefira <b>Custo comercial</b>.');
+  if(/apenas ped\. recebidos/.test(f)) avisos.push('Status "Pedido recebido": pedidos fechados que ainda não passaram no caixa ficam de fora. Prefira Status "Todos".');
+  if(semFech) avisos.push(`${semFech} movimento(s) sem data de fechamento foram ignorados (são orçamentos, não vendas).`);
+  if(semLoja) avisos.push(`${semLoja} movimento(s) sem loja reconhecida (PVA/RV) foram ignorados.`);
+  const semItens=movs.filter(m=>!m.itens.length).length; if(semItens) avisos.push(`${semItens} movimento(s) vieram sem itens.`);
+  // conferência: soma dos itens = produtos − desconto
+  const difs=movs.filter(m=>m.itens.length&&Math.abs(m.itens.reduce((s,i)=>s+(i.total_liquido||0),0)-((m.vlr_produtos||0)-(m.desconto||0)))>1).length;
+  if(difs) avisos.push(`${difs} movimento(s) com soma dos itens diferente do total do pedido — confira o arquivo.`);
+  const vistos=new Set(); const unicos=movs.filter(m=>{const k=m.loja_id+'|'+m.tipo+'|'+m.numero; if(vistos.has(k)) return false; vistos.add(k); return true;});
+  if(unicos.length<movs.length) avisos.push(`${movs.length-unicos.length} movimento(s) repetidos no arquivo foram contados uma vez só.`);
+  return {movs:unicos,filtros,avisos,erros,totalArquivo};
+}
+
+let movsVendas=[];
+function conferirVendas(rows,f){
+  $('passoColunas').classList.remove('hide'); $('colMsgs').innerHTML=''; $('mapear').innerHTML='';
+  const r=lerRelatorioVendas(rows); movsVendas=r.movs;
+  drop.innerHTML=`<b>${f.name}</b> — ${r.movs.length.toLocaleString('pt-BR')} vendas/devoluções lidas. Clique para trocar.`;
+  if(r.filtros.length) msg('colMsgs','Filtros usados no Santri: '+r.filtros.filter(x=>!/^(Tipo de agrupamento:|Nenhum|Empresa da venda|\d+ - \d+ - )/.test(x)).join(' · '),'info');
+  r.erros.forEach(e=>msg('colMsgs','<b>Importação bloqueada:</b> '+e,'err'));
+  if(r.erros.length) return;
+  if(!r.movs.length) return msg('colMsgs','Nenhuma venda encontrada no arquivo.','err');
+  const tot=r.movs.reduce((s,m)=>s+(m.tipo==='DEV'?-1:1)*(m.vlr_liquido||0),0);
+  const confere=r.totalArquivo==null?'':Math.abs(tot-r.totalArquivo)<0.05?' — confere com o "Total Geral" do relatório ✓':` — <b>atenção:</b> o "Total Geral" do relatório é ${brl(r.totalArquivo)}`;
+  msg('colMsgs',`Vendas menos devoluções no arquivo: <b>${brl(tot)}</b>${confere}.`,'ok');
+  r.avisos.forEach(a=>msg('colMsgs',a,'warn'));
+  if(r.avisos.length){ $('mapear').innerHTML='<div class="row" style="margin-top:10px"><button id="btnSeguir">Entendi, continuar</button></div>'; $('btnSeguir').onclick=()=>{$('mapear').innerHTML='';enviarStagingVendas();}; return; }
+  enviarStagingVendas();
+}
+const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+async function enviarStagingVendas(){
+  $('passoEnvio').classList.remove('hide');
+  const regs=movsVendas;
+  const {data:imp,error}=await sb.from('importacoes').insert({tipo:'vendas',arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
+  if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
+  importacaoId=imp.id;
+  const lote=200;
+  for(let i=0;i<regs.length;i+=lote){
+    const {error:e}=await sb.from('vendas_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
+    if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
+    const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
+  }
+  previa();
+}
+
 // ---------- Conversões ----------
 const numBR=v=>{v=String(v??'').trim();if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
 const dataBR=v=>{const m=String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
@@ -285,11 +391,18 @@ async function enviarStaging(){
 }
 
 async function previa(){
-  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':'previa_importacao_produtos',{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':TIPO()==='vendas'?'previa_importacao_vendas':'previa_importacao_produtos',{p_importacao:importacaoId});
   $('passoPrevia').classList.remove('hide');
   if(error){ $('kpis').innerHTML=''; return msg('previaMsgs','Erro na prévia: '+error.message+' — tente de novo; se repetir, avise o Claude com um print desta tela.','err'); }
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
-  const pr=TIPO()==='precos'; $('inativar').parentElement.classList.toggle('hide',pr); $('btnPendencias').classList.toggle('hide',pr);
+  const pr=TIPO()!=='produtos'; $('inativar').parentElement.style.display=pr?'none':'flex'; $('btnPendencias').classList.toggle('hide',pr);
+  if(TIPO()==='vendas'){ const d=s=>s?s.split('-').reverse().join('/'):'';
+    $('kpis').innerHTML=k(data.pedidos,`pedidos · ${brl(data.valor_pedidos)}`)+k(data.devolucoes,`devoluções · ${brl(data.valor_devolucoes)}`)+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.iguais,'já estavam iguais')+k(data.ja_lancados,'já lançados pelo vendedor')+k(data.venda_direta,'vendas diretas');
+    $('previaMsgs').innerHTML=''; msg('previaMsgs',`Período: <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} movimentos.`,'info');
+    if(data.valores_divergentes>0) msg('previaMsgs',`${data.valores_divergentes} pedido(s) lançados pelo vendedor estão com valor diferente do Santri. O Santri vale para o faturamento; confira o pedido lançado.`,'warn');
+    if(data.produtos_sem_cadastro>0) msg('previaMsgs',`${data.produtos_sem_cadastro} produto(s) vendidos não estão no cadastro do sistema. Importe o cadastro de produtos atualizado depois.`,'warn');
+    if(data.itens_sem_custo>0) msg('previaMsgs',`${data.itens_sem_custo} item(ns) sem custo (sem formação de preço na loja e sem custo de compra no arquivo). A margem desses itens sai maior que a real.`,'warn');
+    msg('previaMsgs','A margem é calculada com a fórmula da Negociação. Venda sem pedido lançado pelo vendedor fica sem taxa de cartão e sem RT até ele lançar.','info'); return; }
   if(pr){ $('kpis').innerHTML=k(data.no_arquivo,'preços no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.sem_preco_tabela,'sem preço de fábrica')+k(data.sem_cadastro,'sem cadastro de produto (ignorados)'); $('previaMsgs').innerHTML=''; msg('previaMsgs',`Loja: <b>${data.loja_id==1?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Confira se é a loja certa antes de gravar.`,'info'); return; }
   $('kpis').innerHTML=k(data.no_arquivo,'produtos no arquivo')+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.ausentes_no_arquivo,'ativos no banco que não vieram')+k(data.m2_sem_peso_caixa,'m² sem peso da caixa')+k(data.m2_sem_m2_caixa,'m² sem m²/caixa');
   $('previaMsgs').innerHTML='';
@@ -302,11 +415,11 @@ $('btnPendencias').onclick=()=>{
 };
 $('btnAplicar').onclick=async()=>{
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
-  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
+  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):TIPO()==='vendas'?await sb.rpc('aplicar_importacao_vendas',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
   $('resultado').classList.remove('hide');
   if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
-  $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}. Registro nº ${importacaoId}.</div>`;
+  $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}${data.iguais!=null?`, ${data.iguais} sem mudança`:''}${data.ligados_agora?` · ${data.ligados_agora} ligados a pedidos lançados`:''}. Registro nº ${importacaoId}.</div>`;
   $('passoPrevia').classList.add('hide'); historico();
 };
 $('btnCancelar').onclick=()=>cancelar(true);
