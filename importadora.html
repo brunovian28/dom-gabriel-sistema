@@ -54,7 +54,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div class="card">
     <h2>1. Escolha o relatório</h2>
     <label>Tipo de arquivo</label>
-    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option><option value="vendas">Vendas e devoluções (Relação de vendas e devoluções – Analítico, com itens)</option></select>
+    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option><option value="vendas">Vendas e devoluções (Relação de vendas e devoluções – Analítico, com itens)</option><option value="compras">Compras (Relação de Compras – Analítico)</option></select>
     <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="">— escolha —</option><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select>
       <div class="legenda"><b>Como identificar a loja:</b> antes de importar, renomeie o arquivo colocando a sigla da loja no começo do nome:<br>
       <code>PVA_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Primavera do Leste<br>
@@ -64,7 +64,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       · Empresa da venda: as duas lojas · Tipo de movimento: <b>Não filtrar</b> · Status: <b>Todos</b> · Tipo de custo: <b>Custo comercial</b> · <b>Trazer itens</b> marcado<br>
       · Período pela <b>Data de fechamento</b> (não pela data do orçamento)<br>
       <small>Pode importar o mesmo período quantas vezes quiser: venda que já está no sistema não duplica, só é atualizada. Orçamentos e cancelados não entram.</small></div>
-    <p class="mut">Próximos tipos: Orçamentos cancelados, Compras, Contas a pagar/receber.</p>
+    <div id="comprasBox" class="hide legenda"><b>Como exportar no Santri:</b> Relatórios → Compras → <b>Relação de Compras – Analítico</b>.<br>
+      · Status: marque <b>Aberto, Baixado e Cancelado</b> · Tipo de compra: todos · Empresas: as duas lojas · Agrupar por fornecedor: <b>Não</b><br>
+      · Período pela <b>Data de cadastro</b>. Na primeira vez, desde 01/01/2026; depois, os últimos 6 meses já bastam (pega as compras que ainda estão abertas)<br>
+      <small>Pode importar quantas vezes quiser: compra que já está no sistema não duplica, só é atualizada. O sistema guarda o histórico do que mudou (status, entrada, saldo, datas) a cada importação.</small></div>
+    <p class="mut">Próximos tipos: Orçamentos cancelados, Contas a pagar/receber.</p>
     <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
   </div>
@@ -180,9 +184,9 @@ $('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
 let arquivoNome='';
 
 const TIPO=()=>$('tipo').value;
-const STG=()=>TIPO()==='precos'?'precos_staging':TIPO()==='vendas'?'vendas_staging':'produtos_staging';
+const STG=()=>TIPO()==='precos'?'precos_staging':TIPO()==='vendas'?'vendas_staging':TIPO()==='compras'?'compras_staging':'produtos_staging';
 $('lojaImp').onchange=()=>resetPassos();
-$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); $('vendasBox').classList.toggle('hide',TIPO()!=='vendas'); resetPassos(); };
+$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); $('vendasBox').classList.toggle('hide',TIPO()!=='vendas'); $('comprasBox').classList.toggle('hide',TIPO()!=='compras'); resetPassos(); };
 async function lerArquivo(f){
   if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(TIPO()==='precos') $('lojaImp').value='';
   resetPassos(); arquivoNome=f.name;
@@ -198,6 +202,7 @@ async function lerArquivo(f){
     }
   }catch(e){ drop.innerHTML='Arraste o arquivo novamente'; $('passoColunas').classList.remove('hide'); return msg('colMsgs','Não consegui ler o arquivo: '+e.message,'err'); }
   if(TIPO()==='vendas') return conferirVendas(rows,f);
+  if(TIPO()==='compras') return conferirCompras(rows,f);
   const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value);
   apelidos=ap||[];
   const nomesConhecidos=new Set(apelidos.map(a=>norm(a.apelido)));
@@ -351,6 +356,115 @@ async function enviarStagingVendas(){
   previa();
 }
 
+// ---------- Relatório "Relação de Compras - Analítico" (Santri) ----------
+// Cada compra vem como: cabeçalho da compra (Compra, Fornecedor, …), a linha da compra, cabeçalho dos itens (Produto, Nome, …) e os itens.
+// No fim: linha "TOTAL GERAL" e os filtros usados ("Filtros selecionados").
+function lerRelatorioCompras(rows){
+  const nrm=s=>String(s??'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
+  const num=v=>{v=String(v??'').trim().replace('%','');if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
+  const data=v=>{const m=String(v??'').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
+  const txt=v=>{v=String(v??'').trim();return v||null};
+  const sim=v=>nrm(v)==='sim';
+  const so=v=>String(v??'').replace(/\D/g,'')||null;
+  const LOJA={PVA:1,RV:2};
+  const CAB={numero:'Compra',fornecedor:'Fornecedor',status:'Status',tipo:'Tipo de compra',xml:'Com XML pend. entrada',entrada:'Com entrada realizada',
+    bloq:'Bloq?',prazo:'Média do prazo',comprador:'Comprador',cadastro:'Data cadastro',fatura:'Data fatura',prev:'Prev entr.',baixa:'Data baixa',
+    empresa:'Empresa',confirm:'Confirm?',confger:'Conf.ger?',vinc:'Ped.vda.vinculado?',bruto:'Total Bruto',desc_com:'Total Desc. Comercial',
+    desconto:'Total Desconto',st:'Total ST',outras:'Outras Despesas',frete:'Total Frete',ipi:'Total IPI',valor:'Valor Pedido',peso:'Total Peso',
+    qprod:'Qtd. Produtos',qitens:'Qtd. Itens',qpend:'Qtd. Itens Pendentes',vpend:'Valor Pendências',integ:'Fornecedor integração',
+    enviada:'Enviada integradora?',nrforn:'Nr. pedido fornecedor',pedvenda:'Pedidos de venda vinculados'};
+  const ITM={codigo:'Produto',nome:'Nome',unidade:'Unidade',prev:'Previsão de entrega',qtd:'Quantidade',xml:'Em processo de analise XML',
+    entrada:'Em processo de entrada',entregues:'Entregues',canceladas:'Canceladas',saldo:'Saldo pendente',preco:'Preco',bruto:'Total bruto',
+    desc:'%Desc',outras:'Vlr outr. desp.',liquido:'Total Líquido',codorig:'Cód. original',marca:'Marca',vst:'Valor ST'};
+  const OBRIG=['numero','fornecedor','status','cadastro','empresa','valor'];
+  const OBRIG_I=['codigo','qtd','entregues','saldo','preco'];
+  const mapear=(r,def)=>{const m={};for(const [k,n] of Object.entries(def)){const i=r.findIndex(c=>nrm(c)===nrm(n));if(i>=0)m[k]=i;}return m;};
+  const filtros=[], avisos=[], erros=[], compras=[]; let H=null, I=null, cur=null, estado='', semLoja=0, totalArquivo=null, rodape=false;
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='compra'&&nrm(r[1])==='fornecedor'){ if(!H) H=mapear(r,CAB); estado='c'; continue; }
+    if(c0==='produto'&&nrm(r[1])==='nome'){ if(!I) I=mapear(r,ITM); estado='i'; continue; }
+    if(r.some(x=>nrm(x)==='total geral')){ if(H&&H.valor!=null) totalArquivo=num(r[H.valor]); estado=''; continue; }
+    if(estado==='c'&&H&&/^[\d.]+$/.test(String(r[0]??'').trim())){
+      const g=k=>H[k]!=null?r[H[k]]:'';
+      const emp=String(g('empresa')).match(/(PVA|RV)\s*$/i); const loja=emp?LOJA[emp[1].toUpperCase()]:null;
+      estado='';
+      if(!loja){semLoja++;cur=null;continue;}
+      const f=String(g('fornecedor')).trim(); const mf=f.match(/^([\d.]+)\s*-\s*(.*)$/);
+      const cp=String(g('comprador')).trim(); const mc=cp.match(/^\d+\s*-\s*(.*)$/);
+      cur={loja_id:loja,numero:so(g('numero')),fornecedor_codigo:mf?so(mf[1]):null,fornecedor_nome:mf?txt(mf[2]):txt(f),
+        status:txt(g('status')),tipo_compra:txt(g('tipo')),comprador:mc?txt(mc[1]):txt(cp),
+        data_cadastro:data(g('cadastro')),data_fatura:data(g('fatura')),prev_entrega:data(g('prev')),data_baixa:data(g('baixa')),
+        media_prazo:num(g('prazo')),xml_pendente:sim(g('xml')),entrada_realizada:sim(g('entrada')),bloqueada:sim(g('bloq')),
+        confirmada:sim(g('confirm')),conf_gerencia:sim(g('confger')),ped_venda_vinculado:sim(g('vinc')),pedidos_venda:txt(g('pedvenda')),
+        total_bruto:num(g('bruto')),desconto_comercial:num(g('desc_com')),desconto:num(g('desconto')),total_st:num(g('st')),
+        outras_despesas:num(g('outras')),total_frete:num(g('frete')),total_ipi:num(g('ipi')),valor_pedido:num(g('valor')),
+        total_peso:num(g('peso')),qtd_produtos:num(g('qprod')),qtd_itens:num(g('qitens')),qtd_itens_pendentes:num(g('qpend')),
+        valor_pendencias:num(g('vpend')),fornecedor_integracao:txt(g('integ')),enviada_integradora:sim(g('enviada')),
+        nr_pedido_fornecedor:txt(g('nrforn')),itens:[]};
+      if(!cur.numero){cur=null;continue;}
+      compras.push(cur); continue;
+    }
+    if(estado==='i'&&I&&cur&&/^[\d.]+$/.test(String(r[I.codigo]??'').trim())){
+      const g=k=>I[k]!=null?r[I[k]]:'';
+      cur.itens.push({ordem:cur.itens.length+1,codigo:so(g('codigo')),nome:txt(g('nome')),unidade:txt(g('unidade')),prev_entrega:data(g('prev')),
+        quantidade:num(g('qtd')),em_analise_xml:num(g('xml')),em_entrada:num(g('entrada')),entregues:num(g('entregues')),canceladas:num(g('canceladas')),
+        saldo_pendente:num(g('saldo')),preco:num(g('preco')),total_bruto:num(g('bruto')),pct_desc:num(g('desc')),outras_despesas:num(g('outras')),
+        total_liquido:num(g('liquido')),cod_original:txt(String(g('codorig')).replace(/^'/,'')),marca:txt(g('marca')),valor_st:num(g('vst'))});
+    }
+  }
+  if(!H){ erros.push('Não encontrei o cabeçalho do relatório (colunas Compra, Fornecedor, Status…). É o relatório "Relação de Compras - Analítico"?'); return {compras:[],filtros,avisos,erros}; }
+  const falta=OBRIG.filter(k=>H[k]==null).map(k=>CAB[k]);
+  if(falta.length) erros.push('Faltam colunas no relatório: '+falta.join(', ')+'.');
+  if(!I) erros.push('O arquivo veio sem os itens das compras. Exporte o relatório <b>Analítico</b> (com os produtos de cada compra).');
+  else { const fi=OBRIG_I.filter(k=>I[k]==null).map(k=>ITM[k]); if(fi.length) erros.push('Faltam colunas nos itens: '+fi.join(', ')+'.'); }
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/data de cadastro/.test(f)) avisos.push('O período não foi filtrado pela <b>Data de cadastro</b>. Pode importar assim, mas o combinado é exportar pela data de cadastro, para não perder compras abertas.');
+  if(f&&!/aberto/.test(f)) avisos.push('O filtro de Status não inclui <b>Aberto</b>: compras em aberto deste período não vão aparecer. Prefira marcar Aberto, Baixado e Cancelado.');
+  if(semLoja) avisos.push(`${semLoja} compra(s) sem loja reconhecida (PVA/RV) foram ignoradas.`);
+  const semItens=compras.filter(c=>!c.itens.length).length; if(semItens) avisos.push(`${semItens} compra(s) vieram sem itens.`);
+  const difs=compras.filter(c=>c.itens.length&&Math.abs(c.itens.reduce((s,i)=>s+(i.total_bruto||0),0)-(c.total_bruto||0))>1).length;
+  if(difs) avisos.push(`${difs} compra(s) com soma dos itens diferente do Total Bruto — confira o arquivo.`);
+  const vistos=new Set(); const unicas=compras.filter(c=>{const k=c.loja_id+'|'+c.numero; if(vistos.has(k)) return false; vistos.add(k); return true;});
+  if(unicas.length<compras.length) avisos.push(`${compras.length-unicas.length} compra(s) repetidas no arquivo foram contadas uma vez só.`);
+  return {compras:unicas,filtros,avisos,erros,totalArquivo};
+}
+
+let comprasArq=[];
+function conferirCompras(rows,f){
+  $('passoColunas').classList.remove('hide'); $('colMsgs').innerHTML=''; $('mapear').innerHTML='';
+  const r=lerRelatorioCompras(rows); comprasArq=r.compras;
+  const nIt=r.compras.reduce((s,c)=>s+c.itens.length,0);
+  drop.innerHTML=`<b>${f.name}</b> — ${r.compras.length.toLocaleString('pt-BR')} compras e ${nIt.toLocaleString('pt-BR')} itens lidos. Clique para trocar.`;
+  if(r.filtros.length){ const g=[]; r.filtros.forEach(x=>{ if(/:\s*$/.test(x)||!g.length) g.push(x.replace(/\.{2,}/g,'')); else g[g.length-1]+=(/:\s*$/.test(g[g.length-1])?' ':', ')+x; });
+    msg('colMsgs','Filtros usados no Santri: '+g.join(' · '),'info'); }
+  r.erros.forEach(e=>msg('colMsgs','<b>Importação bloqueada:</b> '+e,'err'));
+  if(r.erros.length) return;
+  if(!r.compras.length) return msg('colMsgs','Nenhuma compra encontrada no arquivo.','err');
+  const tot=r.compras.reduce((s,c)=>s+(c.valor_pedido||0),0);
+  const confere=r.totalArquivo==null?'':Math.abs(tot-r.totalArquivo)<0.05?' — confere com o "Total Geral" do relatório ✓':` — <b>atenção:</b> o "Total Geral" do relatório é ${brl(r.totalArquivo)}`;
+  msg('colMsgs',`Valor dos pedidos de compra no arquivo (com cancelados): <b>${brl(tot)}</b>${confere}.`,'ok');
+  r.avisos.forEach(a=>msg('colMsgs',a,'warn'));
+  if(r.avisos.length){ $('mapear').innerHTML='<div class="row" style="margin-top:10px"><button id="btnSeguir">Entendi, continuar</button></div>'; $('btnSeguir').onclick=()=>{$('mapear').innerHTML='';enviarStagingCompras();}; return; }
+  enviarStagingCompras();
+}
+async function enviarStagingCompras(){
+  $('passoEnvio').classList.remove('hide');
+  const regs=comprasArq;
+  const {data:imp,error}=await sb.from('importacoes').insert({tipo:'compras',arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
+  if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
+  importacaoId=imp.id;
+  const lote=200;
+  for(let i=0;i<regs.length;i+=lote){
+    const {error:e}=await sb.from('compras_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
+    if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
+    const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
+  }
+  previa();
+}
+
 // ---------- Conversões ----------
 const numBR=v=>{v=String(v??'').trim();if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
 const dataBR=v=>{const m=String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
@@ -391,11 +505,17 @@ async function enviarStaging(){
 }
 
 async function previa(){
-  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':TIPO()==='vendas'?'previa_importacao_vendas':'previa_importacao_produtos',{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':TIPO()==='vendas'?'previa_importacao_vendas':TIPO()==='compras'?'previa_importacao_compras':'previa_importacao_produtos',{p_importacao:importacaoId});
   $('passoPrevia').classList.remove('hide');
   if(error){ $('kpis').innerHTML=''; return msg('previaMsgs','Erro na prévia: '+error.message+' — tente de novo; se repetir, avise o Claude com um print desta tela.','err'); }
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
   const pr=TIPO()!=='produtos'; $('inativar').parentElement.style.display=pr?'none':'flex'; $('btnPendencias').classList.toggle('hide',pr);
+  if(TIPO()==='compras'){ const d=s=>s?s.split('-').reverse().join('/'):'';
+    $('kpis').innerHTML=k(data.no_arquivo,`compras · ${brl(data.valor_pedidos)} sem as canceladas`)+k(data.abertas,`em aberto · ${brl(data.valor_pendente)} pendentes`)+k(data.baixadas,'baixadas')+k(data.canceladas,'canceladas')+k(data.novos,'novas')+k(data.alterados,'alteradas')+k(data.iguais,'já estavam iguais');
+    $('previaMsgs').innerHTML=''; msg('previaMsgs',`Cadastradas de <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} compras · ${Number(data.itens).toLocaleString('pt-BR')} itens.`,'info');
+    if(data.mudaram_status>0) msg('previaMsgs',`${data.mudaram_status} compra(s) mudaram de status desde a última importação (ex.: aberta → baixada). Fica registrado no histórico.`,'info');
+    if(data.produtos_sem_cadastro>0) msg('previaMsgs',`${data.produtos_sem_cadastro} produto(s) comprados não estão no cadastro do sistema. Importe o cadastro de produtos atualizado depois.`,'warn');
+    return; }
   if(TIPO()==='vendas'){ const d=s=>s?s.split('-').reverse().join('/'):'';
     $('kpis').innerHTML=k(data.pedidos,`pedidos · ${brl(data.valor_pedidos)}`)+k(data.devolucoes,`devoluções · ${brl(data.valor_devolucoes)}`)+k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.iguais,'já estavam iguais')+k(data.ja_lancados,'já lançados pelo vendedor')+k(data.venda_direta,'vendas diretas');
     $('previaMsgs').innerHTML=''; msg('previaMsgs',`Período: <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} movimentos.`,'info');
@@ -415,10 +535,11 @@ $('btnPendencias').onclick=()=>{
 };
 $('btnAplicar').onclick=async()=>{
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
-  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):TIPO()==='vendas'?await sb.rpc('aplicar_importacao_vendas',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
+  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):TIPO()==='vendas'?await sb.rpc('aplicar_importacao_vendas',{p_importacao:importacaoId}):TIPO()==='compras'?await sb.rpc('aplicar_importacao_compras',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
   $('resultado').classList.remove('hide');
   if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
+  if(TIPO()==='compras') await sb.from('compras_staging').delete().eq('importacao_id',importacaoId); // limpa a área de espera
   $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}${data.iguais!=null?`, ${data.iguais} sem mudança`:''}${data.ligados_agora?` · ${data.ligados_agora} ligados a pedidos lançados`:''}. Registro nº ${importacaoId}.</div>`;
   $('passoPrevia').classList.add('hide'); historico();
 };
