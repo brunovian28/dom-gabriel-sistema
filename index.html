@@ -60,6 +60,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
 #login{max-width:380px;margin:60px auto}
 .aviso{background:#fff4e0;color:#8a5200;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
 .erro{background:#fdecea;color:#b00;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
+#avisoRel{background:#fdecea;color:#b00;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+#avisoRel a{color:#b00;font-weight:bold}#avisoRel button{background:none;border:0;color:#b00;font-size:18px;cursor:pointer;padding:0 4px}
 </style>
 </head>
 <body>
@@ -74,6 +76,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
   <div id="lMsg"></div>
 </div>
 
+<div id="avisoRel" class="hide"></div>
 <div id="corpo" class="hide">
   <nav id="menu"></nav>
   <main id="conteudo"></main>
@@ -121,6 +124,19 @@ async function iniciar(){
   $('#quem').innerHTML=`${esc(eu.nome)} · ${esc(eu.papel)} <button class="link" style="color:#fff" id="sair">Sair</button>`;
   $('#sair').onclick=async()=>{await sb.auth.signOut();location.hash='';location.reload();};
   montarMenu(); rota();
+  avisoRelatorios(); setInterval(avisoRelatorios,15*60*1000);
+}
+// aviso de relatórios do Santri atrasados: a direção vê todos; cada setor vê os seus
+async function avisoRelatorios(){
+  const el=$('#avisoRel'); let fechado=''; try{ fechado=sessionStorage.getItem('avisoRelFechado')||''; }catch(_){}
+  const {data,error}=await sb.rpc('status_relatorios'); if(error||!data) return el.classList.add('hide');
+  const atr=data.filter(r=>r.atrasado&&(ehDirecao()||r.meu));
+  const chave=atr.map(r=>r.tipo).join(',');
+  if(!atr.length||chave===fechado) return el.classList.add('hide');
+  el.innerHTML=`<span>⚠ <b>${atr.length===1?'Relatório do Santri para importar':'Relatórios do Santri para importar'}:</b> ${atr.map(r=>esc(r.nome)+(r.ultima_em?` (${Math.floor(r.dias)} dias)`:'')).join(' · ')}</span>
+    <span><a href="importadora.html">Abrir a Importadora</a> <button title="Esconder até mudar" id="avisoRelX">×</button></span>`;
+  el.classList.remove('hide');
+  $('#avisoRelX').onclick=()=>{ try{ sessionStorage.setItem('avisoRelFechado',chave); }catch(_){} el.classList.add('hide'); };
 }
 sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
@@ -134,6 +150,7 @@ function iniciarLojaVer(){ let v=0; try{ v=+(localStorage.getItem('lojaVer')||0)
   if(veDuasLojas()&&filtro.escopo==='minhas'&&!filtro._ini){ filtro.escopo='todas'; } filtro._ini=1; }
 function montarMenu(){ iniciarLojaVer();
   const itens=SETORES.includes(EU.papel)?[['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/compras','Compras'],['#/capas','Capas']]:[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/painel','Painel'],['#/pedidos','Pedidos'],['#/agenda','Agenda'],...(veCompras()?[['#/compras','Compras']]:[]),['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
+  if(ehDirecao()||EU.importa_tudo||['gerente','compras','financeiro','logistica'].includes(EU.papel)) itens.push(['importadora.html','Importadora']);
   const seletor=veDuasLojas()?`<div style="padding:12px"><label style="color:#cfd8e3">Ver loja</label><select id="lojaVer" style="margin-top:4px"><option value="0">Ambas (PVA + RV)</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>`
     :`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
   $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+seletor;
@@ -260,7 +277,7 @@ function ligarCampos(root){
       if(t==='capas'){CAPA.c[f]=v; if(f==='status') $('#perdaBox').classList.toggle('hide',v!=='Perdida');
         if(f==='motivo_perda'&&v&&CAPA.c.status==='Perdida'){ const {data:ab}=await sb.from('orcamentos').update({status:'Perdido',motivo_perda:v}).eq('capa_id',CAPA.c.id).eq('status','Em negociação').select('id');
           if(ab&&ab.length) toast(ab.length+' orçamento(s) em negociação marcados como perdidos'); } }
-      toast('Salvo ✓'); atualizarResumo();
+      toast('Salvo ✓'); if(CAPA&&$('#resumo')) atualizarResumo();
     });
   });
 }
@@ -1402,7 +1419,7 @@ async function telaCompras(){
   }
   const semImport=!abertas.length&&!ano.length;
   $('#conteudo').innerHTML=`<div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Compras</h2><span class="mut">${ultima?'Dados do Santri importados em '+ultima:''}</span></div>
-   ${semImport?`<div class="aviso">Ainda não há compras importadas${lj?' para esta loja':''}. A direção importa o relatório "Relação de Compras – Analítico" na Importadora.</div>`:''}
+   ${semImport?`<div class="aviso">Ainda não há compras importadas${lj?' para esta loja':''}. Importe o relatório "Relação de Compras – Analítico" na Importadora (setor de Compras ou direção).</div>`:''}
    <div class="kpis" style="margin-bottom:12px">
      <div class="kpi"><b>${abertas.length}</b><span>em aberto · ${brl(pend(abertas))} pendentes</span></div>
      <div class="kpi"><b class="${paradasSem.length?'atras':''}">${paradasSem.length}</b><span>+60 dias sem entrada · ${brl(pend(paradasSem))}</span></div>
@@ -1886,14 +1903,16 @@ async function telaUsuarios(){
   const papeis=['vendedor','gerente','direcao','admin','logistica','financeiro','compras'];
   $('#conteudo').innerHTML=`<h2 style="color:var(--navy)">Usuários</h2>
   <p class="mut">Quem cria acesso entra bloqueado. Marque "Ativo", escolha a loja e o papel para liberar. Direção e admin veem as duas lojas; para outro papel ver as duas, marque "Vê as duas lojas".</p>
-  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th><th>Vê as duas lojas</th><th>Nome no Santri</th></tr>
+  <div class="card tbl"><table><tr><th>Nome</th><th>E-mail</th><th>Ativo</th><th>Loja</th><th>Papel</th><th>Vê as duas lojas</th><th>Importa todos os relatórios</th><th>Nome no Santri</th></tr>
   ${(data||[]).map(u=>`<tr style="${u.ativo?'':'background:#fff8e6'}"><td>${esc(u.nome)}</td><td class="mut">${esc(u.email)}</td>
     <td><input type="checkbox" data-t="usuarios" data-f="ativo" data-id="${u.id}" ${u.ativo?'checked':''} ${u.id===EU.id?'disabled':''} style="width:22px;height:22px"></td>
     <td><select data-t="usuarios" data-f="loja_id" data-id="${u.id}"><option value=""></option>${LOJAS.map(l=>`<option value="${l.id}" ${l.id===u.loja_id?'selected':''}>${esc(l.codigo)}</option>`).join('')}</select></td>
     <td><select data-t="usuarios" data-f="papel" data-id="${u.id}" ${u.id===EU.id?'disabled':''}>${papeis.map(p=>`<option ${p===u.papel?'selected':''}>${p}</option>`).join('')}</select></td>
     <td>${['direcao','admin'].includes(u.papel)?'<span class="mut">sempre</span>':`<input type="checkbox" data-t="usuarios" data-f="todas_lojas" data-id="${u.id}" ${u.todas_lojas?'checked':''} style="width:22px;height:22px">`}</td>
+    <td>${['direcao','admin'].includes(u.papel)?'<span class="mut">sempre</span>':`<input type="checkbox" data-t="usuarios" data-f="importa_tudo" data-id="${u.id}" ${u.importa_tudo?'checked':''} style="width:22px;height:22px">`}</td>
     <td><input data-t="usuarios" data-f="nome_santri" data-id="${u.id}" value="${esc(u.nome_santri||'')}" list="dlSantri" placeholder="como aparece no Santri" style="min-width:200px"></td></tr>`).join('')}
   </table></div><datalist id="dlSantri">${nomesSantri.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+  <p class="mut">"Importa todos os relatórios": a pessoa entra na Importadora e importa qualquer relatório, sem ser da direção. Sem isso, cada setor importa só os seus (Gerente: vendas · Compras: compras e entradas · Financeiro e Logística: os deles).</p>
   <p class="mut">"Nome no Santri" liga as vendas importadas do Santri ao usuário (painel, ranking e pendências de pedido).</p>`;
   ligarCampos($('#conteudo'));
 }

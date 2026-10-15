@@ -30,6 +30,18 @@ button:disabled{opacity:.5;cursor:not-allowed}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd)}th{color:var(--mut);font-weight:normal}
 .bar{height:8px;background:#e6e9ee;border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--gold);width:0}
 .hide{display:none}.mut{color:var(--mut);font-size:13px}
+header a{color:#fff;font-size:13px}
+.rot{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+.rel{border:1px solid var(--bd);border-left:5px solid var(--bd);border-radius:8px;padding:12px;font-size:13px;line-height:1.5}
+.rel.s-atr{border-left-color:var(--err)}.rel.s-dia{border-left-color:var(--ok)}.rel.s-cons{border-left-color:#aab4c0;background:#fafbfc}
+.rel h3{margin:0 0 4px;font-size:14px;color:var(--navy);display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:bold;white-space:nowrap}
+.chip.c-atr{background:#fdecea;color:var(--err)}.chip.c-dia{background:#e8f5e9;color:var(--ok)}.chip.c-cons{background:#eef0f3;color:var(--mut)}
+.rel details{margin-top:6px}.rel summary{cursor:pointer;color:var(--navy)}
+.rel .acoes{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.rel .acoes button{padding:6px 10px;font-size:12px}
+.rel textarea{width:100%;min-height:54px;padding:6px;border:1px solid var(--bd);border-radius:6px;font:inherit;font-size:12px}
+.rel .setores label{display:inline-flex;gap:4px;align-items:center;margin:2px 10px 2px 0;color:var(--txt)}.rel .setores input{width:auto}
+@media (max-width:600px){main{padding:14px 12px}.drop{padding:20px}}
 </style>
 </head>
 <body>
@@ -51,25 +63,23 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 
 <section id="app" class="hide">
-  <div class="card">
+  <div class="card" id="rotinaCard">
+    <h2>Rotina de relatórios</h2>
+    <div id="rotinaMsg"></div>
+    <div id="rotina" class="rot"><span class="mut">Carregando…</span></div>
+  </div>
+
+  <div class="card" id="passo1">
     <h2>1. Escolha o relatório</h2>
     <label>Tipo de arquivo</label>
-    <select id="tipo"><option value="produtos">Cadastro de produtos (Relação de Produtos – Analítico)</option><option value="precos">Preços por loja (Formação de Custo e Preço)</option><option value="vendas">Vendas e devoluções (Relação de vendas e devoluções – Analítico, com itens)</option><option value="compras">Compras (Relação de Compras – Analítico)</option></select>
+    <select id="tipo"></select>
+    <div id="orientaBox" class="legenda hide"></div>
     <div id="lojaBox" class="hide"><label>Loja deste arquivo</label><select id="lojaImp"><option value="">— escolha —</option><option value="1">PVA – Primavera do Leste</option><option value="2">RV – Rio Verde</option></select>
       <div class="legenda"><b>Como identificar a loja:</b> antes de importar, renomeie o arquivo colocando a sigla da loja no começo do nome:<br>
       <code>PVA_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Primavera do Leste<br>
       <code>RV_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Rio Verde<br>
       <small>O sistema escolhe a loja sozinho pelo nome. Sem a sigla, ele não deixa importar até você escolher a loja acima. Cada loja tem seus preços: importe os dois arquivos.</small></div></div>
-    <div id="vendasBox" class="hide legenda"><b>Como exportar no Santri:</b> Relatórios → Vendas → Vendas e devoluções. Na aba Principais:<br>
-      · Empresa da venda: as duas lojas · Tipo de movimento: <b>Não filtrar</b> · Status: <b>Todos</b> · Tipo de custo: <b>Custo comercial</b> · <b>Trazer itens</b> marcado<br>
-      · Período pela <b>Data de fechamento</b> (não pela data do orçamento)<br>
-      <small>Pode importar o mesmo período quantas vezes quiser: venda que já está no sistema não duplica, só é atualizada. Orçamentos e cancelados não entram.</small></div>
-    <div id="comprasBox" class="hide legenda"><b>Como exportar no Santri:</b> Relatórios → Compras → <b>Relação de Compras – Analítico</b>.<br>
-      · Status: marque <b>Aberto, Baixado e Cancelado</b> · Tipo de compra: todos · Empresas: as duas lojas · Agrupar por fornecedor: <b>Não</b><br>
-      · Período pela <b>Data de cadastro</b>. Na primeira vez, desde 01/01/2026; depois, os últimos 6 meses já bastam (pega as compras que ainda estão abertas)<br>
-      <small>Pode importar quantas vezes quiser: compra que já está no sistema não duplica, só é atualizada. O sistema guarda o histórico do que mudou (status, entrada, saldo, datas) a cada importação.</small></div>
-    <p class="mut">Próximos tipos: Orçamentos cancelados, Contas a pagar/receber.</p>
-    <div id="drop" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
+    <div id="drop" style="margin-top:12px" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
   </div>
 
@@ -134,15 +144,76 @@ async function iniciar(){
   const {data:{user}}=await sb.auth.getUser(); if(!user) return;
   const {data}=await sb.from('usuarios').select('id,nome,papel,ativo,loja_id').eq('id',user.id).maybeSingle();
   if(!data||!data.ativo){ $('loginMsg').innerHTML=''; msg('loginMsg','Seu acesso ainda não foi liberado pela direção.','warn'); await sb.auth.signOut(); return; }
-  if(!['admin','direcao'].includes(data.papel)){ msg('loginMsg','A Importadora é restrita à direção.','warn'); await sb.auth.signOut(); return; }
-  usuario=data; $('login').classList.add('hide'); $('app').classList.remove('hide');
-  $('who').innerHTML=`<span>${data.nome}</span><button class="sec" id="sair" style="padding:6px 10px">Sair</button>`;
+  const {data:perm,error:ep}=await sb.rpc('minhas_permissoes_importacao');
+  if(ep||!perm||!perm.importa_algum){ $('loginMsg').innerHTML=''; msg('loginMsg','Seu usuário não importa relatórios. Se deveria, peça à direção para liberar (setor certo ou "Importa todos os relatórios").','warn'); await sb.auth.signOut(); return; }
+  usuario={...data,...perm}; $('login').classList.add('hide'); $('app').classList.remove('hide');
+  $('who').innerHTML=`<a href="./">Ir para o sistema</a><span>${esc(data.nome)}</span><button class="sec" id="sair" style="padding:6px 10px">Sair</button>`;
   $('sair').onclick=async()=>{await sb.auth.signOut();location.reload();};
+  await carregarRotina();
   historico();
+}
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---------- Rotina de relatórios: situação, orientação e prazo de cada um ----------
+const SETORES={gerente:'Gerente',compras:'Compras',financeiro:'Financeiro',logistica:'Logística',vendedor:'Vendedor'};
+let ROTINA=[];
+const quando=t=>{const d=new Date(t);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' às '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
+const dias=n=>n==null?'':n<1?'hoje':n<2?'há 1 dia':`há ${Math.floor(n)} dias`;
+async function carregarRotina(){
+  const {data,error}=await sb.rpc('status_relatorios');
+  if(error){ $('rotina').innerHTML=`<div class="msg err">Não consegui carregar a rotina: ${esc(error.message)}</div>`; return; }
+  ROTINA=data||[];
+  const ver=ROTINA.filter(r=>usuario.direcao||r.meu);
+  const atras=ver.filter(r=>r.atrasado);
+  $('rotinaMsg').innerHTML=atras.length?`<div class="msg err"><b>${atras.length} relatório(s) precisam ser importados:</b> ${atras.map(r=>esc(r.nome)).join(', ')}.</div>`
+    :`<div class="msg ok">Tudo em dia${usuario.direcao?'':' nos seus relatórios'}.</div>`;
+  $('rotina').innerHTML=ver.map(cardRel).join('')||'<span class="mut">Nenhum relatório para o seu setor.</span>';
+  // tipos que este usuário importa (e que já têm leitor)
+  const sel=$('tipo'), atual=sel.value;
+  sel.innerHTML=ROTINA.filter(r=>r.meu&&r.disponivel).map(r=>`<option value="${r.tipo}">${esc(r.nome)}${r.atrasado?' — atrasado':''}</option>`).join('');
+  if(atual&&[...sel.options].some(o=>o.value===atual)) sel.value=atual;
+  $('passo1').classList.toggle('hide',!sel.options.length);
+  trocarTipo(false);
+}
+function cardRel(r){
+  const parcial=(r.faltando||[]).length&&r.ultima_por;
+  const st=!r.disponivel?['s-cons','c-cons','Em construção']:r.atrasado?['s-atr','c-atr',r.ultima_em?'Atrasado':parcial?'Incompleto':'Nunca importado']:['s-dia','c-dia','Em dia'];
+  const resp=(r.setores||[]).map(s=>SETORES[s]||s).join(', ')||'Direção';
+  const NF={pagar:'contas a pagar',receber:'contas a receber',pagar_baixas:'baixas a pagar'};
+  const falta=parcial?r.faltando.map(t=>NF[t]||t.replace(/^[a-z]+_/,'')).join(', '):'';
+  const ult=!r.disponivel?'Leitor em construção — ainda não dá para importar.'
+    :r.ultima_em?`Última: <b>${quando(r.ultima_em)}</b> (${dias(r.dias)})${r.ultima_por?' por '+esc(r.ultima_por):''}`
+    :parcial?`Falta importar: <b>${esc(falta)}</b> (último arquivo por ${esc(r.ultima_por)})`:'Ainda não importado';
+  return `<div class="rel ${st[0]}" id="rel_${r.tipo}">
+    <h3><span>${esc(r.nome)}</span><span class="chip ${st[1]}">${st[2]}</span></h3>
+    <div>${ult}</div>
+    <div class="mut">Prazo: a cada ${r.prazo_dias} dia(s) · Responsável: ${esc(resp)}</div>
+    <details><summary>Como exportar do Santri</summary>
+      <div><b>Onde:</b> ${esc(r.menu_santri)}</div><div><b>Filtros:</b> ${esc(r.filtros)}</div>${r.dicas?`<div class="mut">${esc(r.dicas)}</div>`:''}</details>
+    <div class="acoes">${r.meu&&r.disponivel?`<button onclick="irImportar('${r.tipo}')">Importar agora</button>`:''}${usuario.direcao?`<button class="sec" onclick="editarRel('${r.tipo}')">Editar orientação</button>`:''}</div>
+  </div>`;
+}
+function irImportar(tipo){ $('tipo').value=tipo; trocarTipo(); $('passo1').scrollIntoView({behavior:'smooth'}); }
+function editarRel(tipo){
+  const r=ROTINA.find(x=>x.tipo===tipo); const el=$('rel_'+tipo);
+  el.innerHTML=`<h3><span>${esc(r.nome)}</span></h3>
+    <label>Onde fica no Santri</label><textarea id="ed_menu">${esc(r.menu_santri)}</textarea>
+    <label>Filtros</label><textarea id="ed_filtros">${esc(r.filtros)}</textarea>
+    <label>Dicas</label><textarea id="ed_dicas">${esc(r.dicas)}</textarea>
+    <label>Prazo (dias sem importar até ficar atrasado)</label><input id="ed_prazo" type="number" min="1" value="${r.prazo_dias}">
+    <label>Setores responsáveis (além da direção e de quem importa tudo)</label>
+    <div class="setores">${Object.entries(SETORES).map(([k,n])=>`<label><input type="checkbox" value="${k}" ${(r.setores||[]).includes(k)?'checked':''}>${n}</label>`).join('')}</div>
+    <div class="acoes"><button class="gold" id="ed_salvar">Salvar</button><button class="sec" onclick="carregarRotina()">Cancelar</button></div>`;
+  $('ed_salvar').onclick=async()=>{
+    const set=[...el.querySelectorAll('.setores input:checked')].map(i=>i.value);
+    const {error}=await sb.rpc('salvar_relatorio_rotina',{p_tipo:tipo,p_menu:$('ed_menu').value.trim(),p_filtros:$('ed_filtros').value.trim(),p_dicas:$('ed_dicas').value.trim(),p_prazo:+$('ed_prazo').value||r.prazo_dias,p_setores:set});
+    if(error) return alert('Não salvou: '+error.message);
+    carregarRotina();
+  };
 }
 sb.auth.getSession().then(({data})=>{ if(data.session) iniciar(); });
 
-const PARSER_SRC = "// Streaming ODS parser (shared by worker and node test)\nfunction criarParserODS(onRow){\n  let buf='';\n  const ent=s=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&apos;/g,\"'\").replace(/&amp;/g,'&');\n  const cellRe=/<table:(?:covered-)?table-cell\\b([^>]*?)(\\/>|>([\\s\\S]*?)<\\/table:(?:covered-)?table-cell>)/g;\n  function textoCelula(inner){\n    if(!inner) return '';\n    const ps=[]; const pRe=/<text:p\\b[^>]*?(?:\\/>|>([\\s\\S]*?)<\\/text:p>)/g; let m;\n    while((m=pRe.exec(inner))){ let t=m[1]||''; t=t.replace(/<text:s\\b[^>]*?text:c=\"(\\d+)\"[^>]*\\/>/g,(_,n)=>' '.repeat(+n)).replace(/<text:s\\b[^>]*\\/>/g,' ').replace(/<text:tab\\b[^>]*\\/>/g,'\\t').replace(/<[^>]+>/g,''); ps.push(ent(t)); }\n    return ps.join('\\n');\n  }\n  function linha(xml){\n    const cells=[]; let m; cellRe.lastIndex=0;\n    while((m=cellRe.exec(xml))){\n      const attrs=m[1]; let v=textoCelula(m[3]);\n      if(!v){ const ov=attrs.match(/office:value=\"([^\"]*)\"/); if(ov) v=ov[1]; }\n      const rep=attrs.match(/table:number-columns-repeated=\"(\\d+)\"/); let n=rep?+rep[1]:1;\n      if(!v && n>60) n=1; // colunas vazias repetidas no fim\n      for(let i=0;i<n;i++) cells.push(v);\n    }\n    while(cells.length && cells[cells.length-1]==='') cells.pop();\n    return cells;\n  }\n  return {\n    push(txt){\n      buf+=txt; let end;\n      while((end=buf.indexOf('</table:table-row>'))!==-1){\n        const start=buf.lastIndexOf('<table:table-row',end);\n        const row=buf.slice(start,end); buf=buf.slice(end+18);\n        const c=linha(row); if(c.length) onRow(c);\n      }\n      // remove lixo antes da pr\u00f3xima linha para n\u00e3o acumular\n      const nx=buf.indexOf('<table:table-row'); if(nx>0) buf=buf.slice(nx); else if(nx===-1 && buf.length>1e6) buf=buf.slice(-1e5);\n    }\n  };\n}\n\n";
+const PARSER_SRC = "// Streaming ODS parser (shared by worker and node test)\nfunction criarParserODS(onRow){\n  let buf='';\n  const ent=s=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&apos;/g,\"'\").replace(/&amp;/g,'&');\n  const cellRe=/<table:(?:covered-)?table-cell\\b([^>]*?)(\\/>|>([\\s\\S]*?)<\\/table:(?:covered-)?table-cell>)/g;\n  function textoCelula(inner){\n    if(!inner) return '';\n    const ps=[]; const pRe=/<text:p\\b[^>]*?(?:\\/>|>([\\s\\S]*?)<\\/text:p>)/g; let m;\n    while((m=pRe.exec(inner))){ let t=m[1]||''; t=t.replace(/<text:s\\b[^>]*?text:c=\"(\\d+)\"[^>]*\\/>/g,(_,n)=>' '.repeat(+n)).replace(/<text:s\\b[^>]*\\/>/g,' ').replace(/<text:tab\\b[^>]*\\/>/g,'\\t').replace(/<[^>]+>/g,''); ps.push(ent(t)); }\n    return ps.join('\\n');\n  }\n  function linha(xml){\n    const cells=[]; let m; cellRe.lastIndex=0;\n    while((m=cellRe.exec(xml))){\n      const attrs=m[1]; let v=textoCelula(m[3]);\n      if(!v){ const ov=attrs.match(/office:value=\"([^\"]*)\"/); if(ov){ v=ov[1]; if(/office:value-type=\"(float|percentage|currency)\"/.test(attrs)) v=v.replace(\".\",\",\"); } } // número sem formato: ponto decimal vira vírgula\n      const rep=attrs.match(/table:number-columns-repeated=\"(\\d+)\"/); let n=rep?+rep[1]:1;\n      if(!v && n>60) n=1; // colunas vazias repetidas no fim\n      for(let i=0;i<n;i++) cells.push(v);\n    }\n    while(cells.length && cells[cells.length-1]==='') cells.pop();\n    return cells;\n  }\n  return {\n    push(txt){\n      buf+=txt; let end;\n      while((end=buf.indexOf('</table:table-row>'))!==-1){\n        const start=buf.lastIndexOf('<table:table-row',end);\n        const row=buf.slice(start,end); buf=buf.slice(end+18);\n        const c=linha(row); if(c.length) onRow(c);\n      }\n      // remove lixo antes da pr\u00f3xima linha para n\u00e3o acumular\n      const nx=buf.indexOf('<table:table-row'); if(nx>0) buf=buf.slice(nx); else if(nx===-1 && buf.length>1e6) buf=buf.slice(-1e5);\n    }\n  };\n}\n\n";
 
 // ---------- Leitor rápido de .ods (em segundo plano, por partes) ----------
 const WORKER_SRC = `
@@ -184,9 +255,15 @@ $('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
 let arquivoNome='';
 
 const TIPO=()=>$('tipo').value;
-const STG=()=>TIPO()==='precos'?'precos_staging':TIPO()==='vendas'?'vendas_staging':TIPO()==='compras'?'compras_staging':'produtos_staging';
+const STG=()=>TIPO()+'_staging';  // precos_staging, vendas_staging, compras_staging, entradas_staging, produtos_staging
 $('lojaImp').onchange=()=>resetPassos();
-$('tipo').onchange=()=>{ $('lojaBox').classList.toggle('hide',TIPO()!=='precos'); $('vendasBox').classList.toggle('hide',TIPO()!=='vendas'); $('comprasBox').classList.toggle('hide',TIPO()!=='compras'); resetPassos(); };
+function trocarTipo(reset=true){
+  $('lojaBox').classList.toggle('hide',TIPO()!=='precos');
+  const r=ROTINA.find(x=>x.tipo===TIPO()); const b=$('orientaBox');
+  if(r){ b.innerHTML=`<b>Como exportar no Santri:</b> ${esc(r.menu_santri)}<br>· ${esc(r.filtros).replace(/ · /g,'<br>· ')}${r.dicas?`<br><small>${esc(r.dicas)}</small>`:''}`; b.classList.remove('hide'); } else b.classList.add('hide');
+  if(reset) resetPassos();
+}
+$('tipo').onchange=()=>trocarTipo();
 async function lerArquivo(f){
   if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(TIPO()==='precos') $('lojaImp').value='';
   resetPassos(); arquivoNome=f.name;
@@ -203,6 +280,7 @@ async function lerArquivo(f){
   }catch(e){ drop.innerHTML='Arraste o arquivo novamente'; $('passoColunas').classList.remove('hide'); return msg('colMsgs','Não consegui ler o arquivo: '+e.message,'err'); }
   if(TIPO()==='vendas') return conferirVendas(rows,f);
   if(TIPO()==='compras') return conferirCompras(rows,f);
+  if(TIPO()==='entradas') return conferirEntradas(rows,f);
   const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value);
   apelidos=ap||[];
   const nomesConhecidos=new Set(apelidos.map(a=>norm(a.apelido)));
@@ -341,15 +419,16 @@ function conferirVendas(rows,f){
   enviarStagingVendas();
 }
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-async function enviarStagingVendas(){
+async function enviarStagingVendas(){ return enviarStagingDados('vendas',movsVendas); }
+// tipos que mandam cada registro inteiro (com itens) como json para a área de espera
+async function enviarStagingDados(tipo,regs){
   $('passoEnvio').classList.remove('hide');
-  const regs=movsVendas;
-  const {data:imp,error}=await sb.from('importacoes').insert({tipo:'vendas',arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
+  const {data:imp,error}=await sb.from('importacoes').insert({tipo,arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
   if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
   importacaoId=imp.id;
   const lote=200;
   for(let i=0;i<regs.length;i+=lote){
-    const {error:e}=await sb.from('vendas_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
+    const {error:e}=await sb.from(tipo+'_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
     if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
     const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
   }
@@ -450,19 +529,112 @@ function conferirCompras(rows,f){
   if(r.avisos.length){ $('mapear').innerHTML='<div class="row" style="margin-top:10px"><button id="btnSeguir">Entendi, continuar</button></div>'; $('btnSeguir').onclick=()=>{$('mapear').innerHTML='';enviarStagingCompras();}; return; }
   enviarStagingCompras();
 }
-async function enviarStagingCompras(){
-  $('passoEnvio').classList.remove('hide');
-  const regs=comprasArq;
-  const {data:imp,error}=await sb.from('importacoes').insert({tipo:'compras',arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
-  if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
-  importacaoId=imp.id;
-  const lote=200;
-  for(let i=0;i<regs.length;i+=lote){
-    const {error:e}=await sb.from('compras_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
-    if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
-    const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
+async function enviarStagingCompras(){ return enviarStagingDados('compras',comprasArq); }
+
+// ---------- Relatório "Relação de Entradas - Analítico" (Santri) ----------
+// Cada nota vem como: cabeçalho (Entrada, Fornecedor, …), a linha da nota, cabeçalho dos itens (Código, Nome do Produto, …) e os itens,
+// e, quando a nota está ligada a compras, o bloco "Nº pedidos de compra / Data da compra".
+// No fim: "Total geral" (Qtd entradas, Total entradas, Frete conhec.) e os filtros usados ("Filtros selecionados").
+function lerRelatorioEntradas(rows){
+  const nrm=s=>String(s??'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ');
+  const num=v=>{v=String(v??'').trim().replace('%','');if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
+  const data=v=>{const m=String(v??'').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
+  const txt=v=>{v=String(v??'').trim();return v||null};
+  const so=v=>String(v??'').replace(/\D/g,'')||null;
+  const codNome=v=>{const s=String(v??'').trim();const m=s.match(/^([\d.]+)\s*-\s*(.*)$/);return m?[so(m[1]),txt(m[2])]:[null,txt(s)]};
+  const LOJA={PVA:1,RV:2};
+  const CAB={entrada:'Entrada',fornecedor:'Fornecedor',nr_nota:'Nr. nota',serie:'Série',emissao:'Data emissão',data_entrada:'Data de Entrada',
+    venc1:'Data 1º vencimento',tipo_custo:'Tipo custo entrada',valor_nota:'Valor da nota',desconto:'Valor desconto',qtd_itens:'Qtd. itens',
+    valor_produtos:'Valor produtos',frete_nf:'Total frete',peso:'Peso total',outras:'Outras desp.',status:'Status',prazo:'Prazo médio',
+    empresa:'Empresa',cadastro:'Data do cadastro',ipi:'Total de IPI',base_icms:'Base de ICMS',icms:'Total ICMS',frete_conhec:'Frete conhec.',
+    base_st:'Base de ST',st:'Total ST',dare:'DARE guia',cfop:'CFOP',cte:'Número do CT-e',transp:'Transportadora',
+    cte_emissao:'Data de emissão do CT-e',cte_valor:'Valor do CT-e',cte_entrada:'Data de entrada do CT-e',chave:'Identificação NF-e',
+    cte_chave:'Identificação CT-e/NF-e principal',obs:'Observação'};
+  const ITM={codigo:'Código',nome:'Nome do Produto',codorig:'Código original',qtd:'Quantidade',preco:'Preço',total:'Total',
+    icms:'% ICMS',ipi:'% IPI',cfop:'CFOP',lote:'Lote'};
+  const OBRIG=['entrada','fornecedor','nr_nota','emissao','data_entrada','status','empresa','cadastro','valor_nota','cfop'];
+  const OBRIG_I=['codigo','qtd','preco','total'];
+  const mapear=(r,def)=>{const m={};for(const [k,n] of Object.entries(def)){const i=r.findIndex(c=>nrm(c)===nrm(n));if(i>=0)m[k]=i;}return m;};
+  const filtros=[], avisos=[], erros=[], notas=[]; let H=null, I=null, C=null, cur=null, estado='', semLoja=0, rodape=false, totLabels=null, total={};
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length&&!/^-+ ?f i l t r o s/i.test(t[0])) filtros.push(t.join(' ')); continue; }
+    if(c0==='total geral'){ estado='tot'; cur=null; continue; }
+    if(estado==='tot'){
+      if(r.some(x=>nrm(x)==='qtd entradas')){ totLabels=r.map(nrm); continue; }
+      if(totLabels){ totLabels.forEach((l,i)=>{ if(l&&r[i]!=null&&String(r[i]).trim()!=='') total[l]=num(r[i]); }); totLabels=null; }
+      continue;
+    }
+    if(c0==='entrada'&&nrm(r[1])==='fornecedor'){ if(!H) H=mapear(r,CAB); estado='n'; continue; }
+    if(!c0&&nrm(r[1])==='codigo'&&nrm(r[2])==='nome do produto'){ if(!I){ I=mapear(r,ITM); const il=I.lote; if(il!=null){ const q=r.findIndex((c,i)=>i>il&&nrm(c)==='quantidade'); if(q>=0) I.qtd_lote=q; } } estado='i'; continue; }
+    if(r.some(x=>nrm(x)==='nº pedidos de compra'||nrm(x)==='no pedidos de compra')){ C={num:r.findIndex(x=>/pedidos de compra/.test(nrm(x))), data:r.findIndex(x=>nrm(x)==='data da compra')}; estado='c'; continue; }
+    if(estado==='n'&&H&&/^[\d.]+$/.test(String(r[0]??'').trim())){
+      const g=k=>H[k]!=null?r[H[k]]:'';
+      const emp=String(g('empresa')).match(/(PVA|RV)\s*$/i); const loja=emp?LOJA[emp[1].toUpperCase()]:null;
+      estado='';
+      if(!loja){semLoja++;cur=null;continue;}
+      const [fcod,fnome]=codNome(g('fornecedor')); const [tcod,tnome]=codNome(g('transp'));
+      cur={loja_id:loja,entrada:so(g('entrada')),fornecedor_codigo:fcod,fornecedor_nome:fnome,nr_nota:so(g('nr_nota')),serie:txt(g('serie')),
+        chave_nfe:so(g('chave')),data_emissao:data(g('emissao')),data_cadastro:data(g('cadastro')),data_entrada:data(g('data_entrada')),
+        data_vencimento1:data(g('venc1')),tipo_custo:txt(g('tipo_custo')),status:txt(g('status')),cfop:txt(g('cfop')),
+        valor_nota:num(g('valor_nota')),valor_produtos:num(g('valor_produtos')),valor_desconto:num(g('desconto')),total_frete_nf:num(g('frete_nf')),
+        outras_desp:num(g('outras')),peso_total:num(g('peso')),qtd_itens:num(g('qtd_itens')),prazo_medio:num(g('prazo')),
+        total_ipi:num(g('ipi')),base_icms:num(g('base_icms')),total_icms:num(g('icms')),base_st:num(g('base_st')),total_st:num(g('st')),
+        dare_guia:num(g('dare')),frete_conhec:num(g('frete_conhec')),cte_numero:so(g('cte')),cte_chave:so(g('cte_chave')),
+        transportadora_codigo:tcod,transportadora_nome:tnome,cte_emissao:data(g('cte_emissao')),cte_entrada:data(g('cte_entrada')),
+        cte_valor:num(g('cte_valor')),observacao:txt(g('obs')),itens:[],compras:[]};
+      if(!cur.entrada){cur=null;continue;}
+      notas.push(cur); continue;
+    }
+    if(estado==='i'&&I&&cur&&/^[\d.]+$/.test(String(r[I.codigo]??'').trim())){
+      const g=k=>I[k]!=null?r[I[k]]:'';
+      cur.itens.push({ordem:cur.itens.length+1,codigo:so(g('codigo')),nome:txt(g('nome')),cod_original:txt(String(g('codorig')).replace(/^'/,'')),
+        quantidade:num(g('qtd')),preco:num(g('preco')),total:num(g('total')),pct_icms:num(g('icms')),pct_ipi:num(g('ipi')),
+        cfop:txt(g('cfop')),lote:txt(g('lote')),qtd_lote:num(g('qtd_lote'))});
+      continue;
+    }
+    if(estado==='c'&&C&&cur&&C.num>=0&&/^[\d.]+$/.test(String(r[C.num]??'').trim())){
+      const n=so(r[C.num]); if(n&&!cur.compras.some(x=>x.numero===n)) cur.compras.push({numero:n,data:C.data>=0?data(r[C.data]):null});
+      continue;
+    }
   }
-  previa();
+  if(!H){ erros.push('Não encontrei o cabeçalho do relatório (colunas Entrada, Fornecedor, Nr. nota…). É o relatório "Relação de Entradas - Analítico"?'); return {notas:[],filtros,avisos,erros,total}; }
+  const falta=OBRIG.filter(k=>H[k]==null).map(k=>CAB[k]);
+  if(falta.length) erros.push('Faltam colunas no relatório: '+falta.join(', ')+'.');
+  if(!I) erros.push('O arquivo veio sem os itens das notas. Exporte o relatório <b>Analítico</b>.');
+  else { const fi=OBRIG_I.filter(k=>I[k]==null).map(k=>ITM[k]); if(fi.length) erros.push('Faltam colunas nos itens: '+fi.join(', ')+'.'); }
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/data de cadastro/.test(f)) avisos.push('O período não foi filtrado pela <b>Data de cadastro</b>. O combinado é exportar pela data de cadastro, para pegar as notas que ainda estão abertas.');
+  const emps=filtros.filter(x=>/^\d+\s*-\s*dom gabriel/i.test(x.trim()));
+  if(emps.length===1) avisos.push('O filtro de Empresa tem só <b>uma loja</b> ('+emps[0]+'). O combinado é exportar as duas lojas juntas.');
+  if(semLoja) avisos.push(`${semLoja} nota(s) sem loja reconhecida (PVA/RV) foram ignoradas.`);
+  const difs=notas.filter(n=>n.itens.length&&Math.abs(n.itens.reduce((s,i)=>s+(i.total||0),0)-(n.valor_produtos||0))>1).length;
+  if(difs) avisos.push(`${difs} nota(s) com soma dos itens diferente do Valor produtos — confira o arquivo.`);
+  const vistos=new Set(); const unicas=notas.filter(n=>{const k=n.loja_id+'|'+n.entrada; if(vistos.has(k)) return false; vistos.add(k); return true;});
+  if(unicas.length<notas.length) avisos.push(`${notas.length-unicas.length} nota(s) repetidas no arquivo foram contadas uma vez só.`);
+  return {notas:unicas,filtros,avisos,erros,total};
+}
+
+let notasEntradas=[];
+function conferirEntradas(rows,f){
+  $('passoColunas').classList.remove('hide'); $('colMsgs').innerHTML=''; $('mapear').innerHTML='';
+  const r=lerRelatorioEntradas(rows); notasEntradas=r.notas;
+  const nIt=r.notas.reduce((s,n)=>s+n.itens.length,0);
+  drop.innerHTML=`<b>${esc(f.name)}</b> — ${r.notas.length.toLocaleString('pt-BR')} notas e ${nIt.toLocaleString('pt-BR')} itens lidos. Clique para trocar.`;
+  if(r.filtros.length) msg('colMsgs','Filtros usados no Santri: '+r.filtros.map(x=>esc(x.replace(/\.{2,}/g,''))).join(' · '),'info');
+  r.erros.forEach(e=>msg('colMsgs','<b>Importação bloqueada:</b> '+e,'err'));
+  if(r.erros.length) return;
+  if(!r.notas.length) return msg('colMsgs','Nenhuma nota de entrada encontrada no arquivo.','err');
+  const tot=r.notas.reduce((s,n)=>s+(n.valor_nota||0),0), fr=r.notas.reduce((s,n)=>s+(n.frete_conhec||0),0);
+  const T=r.total, ok=v=>v!=null;
+  const confNotas=!ok(T['qtd entradas'])?'':T['qtd entradas']===r.notas.length?' ✓':` (<b>atenção:</b> o relatório diz ${T['qtd entradas']})`;
+  const confTot=!ok(T['total entradas'])?'':Math.abs(tot-T['total entradas'])<0.05?' ✓':` (<b>atenção:</b> o "Total geral" do relatório é ${brl(T['total entradas'])})`;
+  const confFr=!ok(T['frete conhec.'])?'':Math.abs(fr-T['frete conhec.'])<0.05?' ✓':` (<b>atenção:</b> o relatório diz ${brl(T['frete conhec.'])})`;
+  msg('colMsgs',`${r.notas.length.toLocaleString('pt-BR')} notas${confNotas} · valor das notas <b>${brl(tot)}</b>${confTot} · frete pago em CT-e <b>${brl(fr)}</b>${confFr}.`,'ok');
+  r.avisos.forEach(a=>msg('colMsgs',a,'warn'));
+  if(r.avisos.length){ $('mapear').innerHTML='<div class="row" style="margin-top:10px"><button id="btnSeguir">Entendi, continuar</button></div>'; $('btnSeguir').onclick=()=>{$('mapear').innerHTML='';enviarStagingDados('entradas',notasEntradas);}; return; }
+  enviarStagingDados('entradas',notasEntradas);
 }
 
 // ---------- Conversões ----------
@@ -505,11 +677,18 @@ async function enviarStaging(){
 }
 
 async function previa(){
-  const {data,error}=await sb.rpc(TIPO()==='precos'?'previa_importacao_precos':TIPO()==='vendas'?'previa_importacao_vendas':TIPO()==='compras'?'previa_importacao_compras':'previa_importacao_produtos',{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc('previa_importacao_'+TIPO(),{p_importacao:importacaoId});
   $('passoPrevia').classList.remove('hide');
   if(error){ $('kpis').innerHTML=''; return msg('previaMsgs','Erro na prévia: '+error.message+' — tente de novo; se repetir, avise o Claude com um print desta tela.','err'); }
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
   const pr=TIPO()!=='produtos'; $('inativar').parentElement.style.display=pr?'none':'flex'; $('btnPendencias').classList.toggle('hide',pr);
+  if(TIPO()==='entradas'){ const d=s=>s?s.split('-').reverse().join('/'):'';
+    $('kpis').innerHTML=k(data.no_arquivo,`notas · ${brl(data.valor_notas)}`)+k(data.revenda,'de revenda')+k(data.uso_consumo,'uso e consumo')+k(data.amostra_bonificacao,'amostra / bonificação')+k(data.abertas,'ainda abertas')+k(data.novos,'novas')+k(data.alterados,'alteradas')+k(data.iguais,'já estavam iguais');
+    $('previaMsgs').innerHTML=''; msg('previaMsgs',`Cadastradas de <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} notas · ${Number(data.itens).toLocaleString('pt-BR')} itens · frete em CT-e ${brl(data.frete_cte)}.`,'info');
+    if(data.baixadas_agora>0) msg('previaMsgs',`${data.baixadas_agora} nota(s) foram baixadas desde a última importação. Fica registrado no histórico.`,'info');
+    msg('previaMsgs',`${data.compras_ligadas} pedido(s) de compra ligados às notas.`+(data.compras_fora_do_sistema>0?` <b>${data.compras_fora_do_sistema}</b> deles ainda não estão no sistema: importe o relatório de Compras atualizado.`:''),data.compras_fora_do_sistema>0?'warn':'info');
+    if(data.revenda_sem_compra>0) msg('previaMsgs',`${data.revenda_sem_compra} nota(s) de revenda (${brl(data.revenda_sem_compra_valor)}) entraram <b>sem pedido de compra ligado</b> no Santri. Pelo combinado, toda nota de revenda nasce de um pedido de compra.`,'warn');
+    return; }
   if(TIPO()==='compras'){ const d=s=>s?s.split('-').reverse().join('/'):'';
     $('kpis').innerHTML=k(data.no_arquivo,`compras · ${brl(data.valor_pedidos)} sem as canceladas`)+k(data.abertas,`em aberto · ${brl(data.valor_pendente)} pendentes`)+k(data.baixadas,'baixadas')+k(data.canceladas,'canceladas')+k(data.novos,'novas')+k(data.alterados,'alteradas')+k(data.iguais,'já estavam iguais');
     $('previaMsgs').innerHTML=''; msg('previaMsgs',`Cadastradas de <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} compras · ${Number(data.itens).toLocaleString('pt-BR')} itens.`,'info');
@@ -535,13 +714,13 @@ $('btnPendencias').onclick=()=>{
 };
 $('btnAplicar').onclick=async()=>{
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
-  const {data,error}=TIPO()==='precos'?await sb.rpc('aplicar_importacao_precos',{p_importacao:importacaoId}):TIPO()==='vendas'?await sb.rpc('aplicar_importacao_vendas',{p_importacao:importacaoId}):TIPO()==='compras'?await sb.rpc('aplicar_importacao_compras',{p_importacao:importacaoId}):await sb.rpc('aplicar_importacao_produtos',{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked});
+  const {data,error}=await sb.rpc('aplicar_importacao_'+TIPO(),TIPO()==='produtos'?{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked}:{p_importacao:importacaoId});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
   $('resultado').classList.remove('hide');
   if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
-  if(TIPO()==='compras') await sb.from('compras_staging').delete().eq('importacao_id',importacaoId); // limpa a área de espera
+  if(['compras','entradas'].includes(TIPO())) await sb.from(STG()).delete().eq('importacao_id',importacaoId); // limpa a área de espera
   $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}${data.iguais!=null?`, ${data.iguais} sem mudança`:''}${data.ligados_agora?` · ${data.ligados_agora} ligados a pedidos lançados`:''}. Registro nº ${importacaoId}.</div>`;
-  $('passoPrevia').classList.add('hide'); historico();
+  $('passoPrevia').classList.add('hide'); historico(); carregarRotina();
 };
 $('btnCancelar').onclick=()=>cancelar(true);
 async function cancelar(avisar){
@@ -550,10 +729,11 @@ async function cancelar(avisar){
 }
 function resetPassos(){['passoColunas','passoEnvio','passoPrevia','resultado'].forEach(i=>$(i).classList.add('hide'));$('colMsgs').innerHTML='';$('previaMsgs').innerHTML='';$('barra').style.width='0';importacaoId=null;}
 
+const nomeTipo=t=>{const r=ROTINA.find(x=>x.tipo===t||(x.tipos_importacao||[]).includes(t)); const m=t.match(/_(PVA|RV)$/); const b=ROTINA.find(x=>m&&x.tipo===t.replace(/_(PVA|RV)$/,'')); return (r||b)?((r||b).nome+(m?' · '+m[1]:'')):t;};
 async function historico(){
   const {data}=await sb.from('importacoes').select('id,tipo,arquivo_nome,linhas,status,criado_em,resumo').order('id',{ascending:false}).limit(15);
   if(!data||!data.length){$('hist').textContent='Nenhuma importação ainda.';return;}
-  $('hist').innerHTML=`<table><tr><th>Nº</th><th>Quando</th><th>Tipo</th><th>Arquivo</th><th>Linhas</th><th>Status</th><th>Resultado</th></tr>${data.map(d=>`<tr><td>${d.id}</td><td>${new Date(d.criado_em).toLocaleString('pt-BR')}</td><td>${d.tipo}</td><td>${d.arquivo_nome||''}</td><td>${(d.linhas||0).toLocaleString('pt-BR')}</td><td>${d.status}</td><td>${d.resumo?`${d.resumo.novos} novos · ${d.resumo.alterados} alterados`:''}</td></tr>`).join('')}</table>`;
+  $('hist').innerHTML=`<table><tr><th>Nº</th><th>Quando</th><th>Tipo</th><th>Arquivo</th><th>Linhas</th><th>Status</th><th>Resultado</th></tr>${data.map(d=>`<tr><td>${d.id}</td><td>${new Date(d.criado_em).toLocaleString('pt-BR')}</td><td>${esc(nomeTipo(d.tipo))}</td><td>${esc(d.arquivo_nome||'')}</td><td>${(d.linhas||0).toLocaleString('pt-BR')}</td><td>${d.status}</td><td>${d.resumo?`${d.resumo.novos} novos · ${d.resumo.alterados} alterados`:''}</td></tr>`).join('')}</table>`;
 }
 </script>
 </body>
