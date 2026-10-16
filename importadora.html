@@ -78,7 +78,7 @@ header a{color:#fff;font-size:13px}
       <div class="legenda"><b>Como identificar a loja:</b> antes de importar, renomeie o arquivo colocando a sigla da loja no começo do nome:<br>
       <code>PVA_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Primavera do Leste<br>
       <code>RV_</code>Formação de Custo e Preço - 28-09-2026.ods &nbsp;→ Rio Verde<br>
-      <small>O sistema escolhe a loja sozinho pelo nome. Sem a sigla, ele não deixa importar até você escolher a loja acima. Cada loja tem seus preços: importe os dois arquivos.</small></div></div>
+      <small>Vale para os relatórios de uma loja só: Formação de Custo e Preço, Estoque por local e DRE. O sistema escolhe a loja sozinho pelo nome; sem a sigla, ele não deixa importar até você escolher a loja acima. Importe os dois arquivos (PVA e RV).</small></div></div>
     <div id="drop" style="margin-top:12px" class="drop">Arraste aqui o arquivo exportado do Santri (.ods, .xlsx, .xls)<br><small>ou clique para escolher</small></div>
     <input id="file" type="file" accept=".ods,.xlsx,.xls,.csv" class="hide">
   </div>
@@ -255,17 +255,18 @@ $('file').onchange=e=>{if(e.target.files[0])lerArquivo(e.target.files[0])};
 let arquivoNome='';
 
 const TIPO=()=>$('tipo').value;
-const STG=()=>TIPO()+'_staging';  // precos_staging, vendas_staging, compras_staging, entradas_staging, produtos_staging
+const STG=()=>(DEST?DEST.stg:TIPO())+'_staging';
+const RPC=()=>DEST?DEST.rpc:TIPO();  // precos_staging, vendas_staging, compras_staging, entradas_staging, produtos_staging
 $('lojaImp').onchange=()=>resetPassos();
 function trocarTipo(reset=true){
-  $('lojaBox').classList.toggle('hide',TIPO()!=='precos');
+  $('lojaBox').classList.toggle('hide',!['precos','estoque','dre'].includes(TIPO()));
   const r=ROTINA.find(x=>x.tipo===TIPO()); const b=$('orientaBox');
   if(r){ b.innerHTML=`<b>Como exportar no Santri:</b> ${esc(r.menu_santri)}<br>· ${esc(r.filtros).replace(/ · /g,'<br>· ')}${r.dicas?`<br><small>${esc(r.dicas)}</small>`:''}`; b.classList.remove('hide'); } else b.classList.add('hide');
   if(reset) resetPassos();
 }
 $('tipo').onchange=()=>trocarTipo();
 async function lerArquivo(f){
-  if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(TIPO()==='precos') $('lojaImp').value='';
+  if(/^RV[_ -]/i.test(f.name)) $('lojaImp').value='2'; else if(/^PVA[_ -]/i.test(f.name)) $('lojaImp').value='1'; else if(['precos','estoque','dre'].includes(TIPO())) $('lojaImp').value='';
   resetPassos(); arquivoNome=f.name;
   drop.innerHTML=`Lendo <b>${f.name}</b>…`;
   let rows;
@@ -281,6 +282,12 @@ async function lerArquivo(f){
   if(TIPO()==='vendas') return conferirVendas(rows,f);
   if(TIPO()==='compras') return conferirCompras(rows,f);
   if(TIPO()==='entradas') return conferirEntradas(rows,f);
+  if(TIPO()==='orcamentos') return conferirOrcamentos(rows,f);
+  if(TIPO()==='receber_baixas') return conferirBaixas(rows,f,'receber');
+  if(TIPO()==='entregas') return conferirEntregas(rows,f);
+  if(TIPO()==='estoque') return conferirEstoque(rows,f);
+  if(TIPO()==='financeiro') return conferirFinanceiro(rows,f);
+  if(TIPO()==='dre') return conferirDRE(rows,f);
   const {data:ap}=await sb.from('importacao_colunas').select('*').eq('tipo',$('tipo').value);
   apelidos=ap||[];
   const nomesConhecidos=new Set(apelidos.map(a=>norm(a.apelido)));
@@ -421,14 +428,14 @@ function conferirVendas(rows,f){
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 async function enviarStagingVendas(){ return enviarStagingDados('vendas',movsVendas); }
 // tipos que mandam cada registro inteiro (com itens) como json para a área de espera
-async function enviarStagingDados(tipo,regs){
+async function enviarStagingDados(tipo,regs,stg){
   $('passoEnvio').classList.remove('hide');
   const {data:imp,error}=await sb.from('importacoes').insert({tipo,arquivo_nome:arquivoNome,usuario_id:usuario.id,status:'preparando',linhas:regs.length}).select().single();
   if(error) return msg('colMsgs','Erro ao iniciar: '+error.message,'err');
   importacaoId=imp.id;
   const lote=200;
   for(let i=0;i<regs.length;i+=lote){
-    const {error:e}=await sb.from(tipo+'_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
+    const {error:e}=await sb.from((stg||tipo)+'_staging').insert(regs.slice(i,i+lote).map(d=>({importacao_id:importacaoId,dados:d})));
     if(e){ $('envioTxt').textContent='Erro: '+e.message; await cancelar(); return; }
     const p=Math.min(100,Math.round((i+lote)/regs.length*100)); $('barra').style.width=p+'%'; $('envioTxt').textContent=`${Math.min(i+lote,regs.length).toLocaleString('pt-BR')} de ${regs.length.toLocaleString('pt-BR')}`;
   }
@@ -637,6 +644,418 @@ function conferirEntradas(rows,f){
   enviarStagingDados('entradas',notasEntradas);
 }
 
+// ---------- Leitores novos ----------
+// ---------- Leitores novos (16/10/2026): orçamentos, baixas, entregas, estoque, contas a pagar/receber, DRE ----------
+// Mesmo padrão dos anteriores: lê as linhas do relatório do Santri, confere com os totais do próprio relatório,
+// devolve {regs, filtros, avisos, erros, ...}. Nada é gravado aqui.
+const L_={
+  nrm:s=>String(s??'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' '),
+  num:v=>{v=String(v??'').trim().replace('%','');if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n},
+  data:v=>{const m=String(v??'').trim().match(/^(\d{2})\/(\d{2})\/(\d{4}|\d{2})\b/);if(!m)return null;const a=m[3].length===2?'20'+m[3]:m[3];return `${a}-${m[2]}-${m[1]}`},
+  dataHora:v=>{const m=String(v??'').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)/);if(!m)return null;return `${m[3]}-${m[2]}-${m[1]}T${m[4].length===5?m[4]+':00':m[4]}`},
+  txt:v=>{v=String(v??'').trim();return v||null},
+  so:v=>String(v??'').replace(/\D/g,'')||null,
+  codNome:v=>{const s=String(v??'').trim();const m=s.match(/^([\d.]+)\s*-\s*(.*)$/);return m?[String(m[1]).replace(/\D/g,''),m[2].trim()||null]:[null,s||null]},
+  loja:v=>{const m=String(v??'').match(/(PVA|RV)\s*$/i);return m?({PVA:1,RV:2})[m[1].toUpperCase()]:null},
+  mapear:(r,def)=>{const m={};for(const [k,n] of Object.entries(def)){const i=r.findIndex(c=>L_.nrm(c)===L_.nrm(n));if(i>=0)m[k]=i;}return m;},
+  unicos:(regs,chave,avisos,nome)=>{const v=new Set();const u=regs.filter(x=>{const k=chave(x);if(v.has(k))return false;v.add(k);return true;});if(u.length<regs.length)avisos.push(`${regs.length-u.length} ${nome} repetido(s) no arquivo foram contados uma vez só.`);return u;}
+};
+
+// Nº do pedido de venda a partir do "Documento" do título (13152/1-3 · CAR121-ORC13152/1-2 · T 13152/1-3)
+function pedidoDoDocumento(doc){
+  const s=String(doc??'').toUpperCase();
+  let m=s.match(/ORC\s*(\d{4,6})\s*\//); if(m) return m[1];
+  m=s.match(/(?:^|[\s-])(\d{4,6})\s*\/\s*\d+\s*-\s*\d+/); if(m) return m[1];
+  return null;
+}
+
+// ---------- Orçamentos (Vendas e devoluções – Analítico com status Orçamento ou Cancelado) ----------
+function lerRelatorioOrcamentos(rows){
+  const {nrm,num,txt,so}=L_;
+  const CAB={tipo:'Tipo',id:'Id',vendedor:'Vendedor',cliente:'Cliente',tel:'Telefone cliente',whats:'Whatsapp do cliente',doc:'CPF/ CNPJ do cliente',email:'E-mail do cliente',
+    fech:'Data/hora fechamento',produtos:'Vlr. produtos',frete:'Frete',outras:'Out. desp.',desconto:'Desconto',liquido:'Vlr. líquido',
+    custo:'Custo',custo_compra:'Custo compra',ins:'Usuário inserção',empresa:'Empresa'};
+  const OBRIG=['tipo','id','vendedor','cliente','liquido','empresa'];
+  const filtros=[], avisos=[], erros=[], regs=[]; let H=null, I=null, cur=null, rodape=false, semLoja=0, comFech=0, totalArquivo=null, qtdArquivo=null;
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='tipo'&&nrm(r[1])==='id'){ if(!H) H=L_.mapear(r,CAB); continue; }
+    if(!c0&&nrm(r[1])==='codigo'){ if(!I){ I=L_.mapear(r,{codigo:'Código',nome:'Nome',marca:'Marca',promo:'Promoção?',qtd:'Quantidade',desc:'Juros/desc.',liquido:'Total líquido',custo:'Valor custo',custo_compra:'Custo compra'});
+        const pv=r.map((c,i)=>nrm(c)==='preco venda'?i:-1).filter(i=>i>=0); I.unit=pv[0]; I.total=pv[1]??pv[0]; } continue; }
+    if(!c0&&r.some(x=>/^quantidade: /i.test(String(x).trim()))){ const q=r.find(x=>/^quantidade: /i.test(String(x).trim())); qtdArquivo=num(String(q).replace(/^quantidade:\s*/i,'')); continue; }
+    if(!c0&&r.some(x=>nrm(x)==='total geral')){ if(H?.liquido!=null) totalArquivo=num(r[H.liquido]); continue; }
+    const tipo=String(r[0]??'').trim().toUpperCase();
+    if((tipo==='PED'||tipo==='DEV')&&H){
+      const g=k=>H[k]!=null?r[H[k]]:'';
+      const loja=L_.loja(g('empresa')); cur=null;
+      if(!loja){semLoja++;continue;}
+      if(String(g('fech')).trim()) comFech++;
+      const [cc,cn]=L_.codNome(String(g('cliente')).replace(/^([\d.]+)-/,'$1 - '));
+      cur={loja_id:loja,numero:so(g('id')),vendedor:txt(g('vendedor')),usuario_insercao:txt(String(g('ins')).replace(/^\d+\s*-\s*/,'')),
+        cliente_codigo:cc,cliente_nome:cn,cliente_doc:txt(g('doc')),cliente_telefone:txt(g('whats'))||txt(g('tel')),cliente_email:txt(g('email')),
+        vlr_produtos:num(g('produtos')),frete:num(g('frete')),outras_desp:num(g('outras')),desconto:num(g('desconto')),vlr_liquido:num(g('liquido')),
+        custo:num(g('custo')),custo_compra:num(g('custo_compra')),itens:[]};
+      if(!cur.numero){cur=null;continue;}
+      regs.push(cur); continue;
+    }
+    if(!c0&&I&&cur&&/^\d+$/.test(String(r[I.codigo]??'').trim())){
+      const g=k=>I[k]!=null?r[I[k]]:'';
+      cur.itens.push({ordem:cur.itens.length+1,codigo:String(g('codigo')).trim(),descricao:txt(g('nome')),marca:txt(g('marca')),promocao:nrm(g('promo'))==='sim',
+        quantidade:num(g('qtd')),preco_unitario:num(g('unit')),total_bruto:num(g('total')),total_liquido:num(g('liquido')),custo:num(g('custo')),custo_compra:num(g('custo_compra'))});
+    }
+  }
+  if(!H){ erros.push('Não encontrei o cabeçalho do relatório (colunas Tipo, Id, Vendedor…). É o relatório "Vendas e devoluções – Analítico"?'); return {regs:[],filtros,avisos,erros}; }
+  const falta=OBRIG.filter(k=>H[k]==null).map(k=>CAB[k]); if(falta.length) erros.push('Faltam colunas no relatório: '+falta.join(', ')+'.');
+  if(!I) erros.push('O arquivo veio sem os itens. No Santri, marque "Trazer itens" antes de exportar.');
+  const f=filtros.map(nrm).join(' | ');
+  let status=null;
+  if(/apenas ped\. orcados/.test(f)) status='Orçamento'; else if(/apenas ped\. cancelados/.test(f)) status='Cancelado';
+  if(!status) erros.push('Este arquivo não é de orçamentos: o Status tem que ser <b>Orçamento</b> (um arquivo) ou <b>Cancelado</b> (outro arquivo). Para vendas, use o tipo "Vendas e devoluções".');
+  if(f&&!/dt\. de cad\. do or/.test(f)) avisos.push('O período não foi filtrado pela <b>data de cadastro do orçamento</b>. O combinado é desde 01/01/2026 pela data de cadastro.');
+  if(/custo medio/.test(f)) avisos.push('Tipo de custo "Custo médio": prefira <b>Custo comercial</b>, como nas vendas.');
+  if(comFech) avisos.push(`${comFech} movimento(s) com data de fechamento — viraram pedido. Entram como orçamento mesmo assim; o sistema liga ao pedido pelo número.`);
+  if(semLoja) avisos.push(`${semLoja} orçamento(s) sem loja reconhecida (PVA/RV) foram ignorados.`);
+  const per=filtros.find(x=>/dt\. de cad\. do or/i.test(L_.nrm(x)));
+  const pm=per&&per.match(/(\d{2}\/\d{2}\/\d{4})\s*at[eé]\s*(\d{2}\/\d{2}\/\d{4})/i);
+  const unicos=L_.unicos(regs,x=>x.loja_id+'|'+x.numero,avisos,'orçamento');
+  unicos.forEach(x=>x.status=status);
+  return {regs:unicos,filtros,avisos,erros,status,totalArquivo,qtdArquivo,periodo:pm?[L_.data(pm[1]),L_.data(pm[2])]:null};
+}
+
+// ---------- Baixas de contas a receber / a pagar (Analítico) ----------
+// Blocos: "Baixa" (cabeçalho) + baixa · "Cód. item" + formas de pagamento · "Cód. financeiro" + títulos baixados · "Total".
+function lerRelatorioBaixas(rows){
+  const {nrm,num,txt,so,data}=L_;
+  const filtros=[], avisos=[], erros=[], regs=[]; let lado=null, HB=null, HI=null, HF=null, estado='', cur=null, rodape=false, totLab=null, total={}, semLoja=0;
+  const BAIXA={baixa:'Baixa',data:'Dt. baixa',tipo:'Tipo da baixa',cadastro:'Cadastro',receb:'Dt. recebimento',compl:'Complemento',media:'Dt. média recebimento',empresa:'Empresa',usuario:'Usuário inserção'};
+  const ITEM={item:'Cód. item',forma:'Tipo de pagamento',conta:'Cód. conta',valor:'Valor',receb:'Data de recebimento',conciliado:'Conciliado'};
+  const FIN={cod:'Cód. financeiro',nome:'Cliente/fornecedor',doc:'Cpf/Cnpj',tipo:'Tipo do financeiro',venc:'Dt. vencimento',nota:'Nr. nota',vdoc:'Vlr. documento',
+    juros:'Juros',multa:'Multa',desconto:'Desconto',adiant:'Vlr. adiantado',baixado:'Vlr. baixado',emissao:'Dt. emissão',documento:'Documento',empresa:'Empresa',portador:'Portador'};
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(!lado&&/baixas de contas a (receber|pagar)/.test(c0)){ lado=/receber/.test(c0)?'receber':'pagar'; continue; }
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='totais'){ totLab=r.map(nrm); continue; }
+    if(totLab){ totLab.forEach((l,i)=>{ if(l&&String(r[i]??'').trim()) total[l]=num(r[i]); }); totLab=null; continue; }
+    if(c0==='vlr. cred. gerado'){ total['credito gerado']=num(r[1]); continue; }
+    if(c0==='baixa'&&nrm(r[1])==='dt. baixa'){ if(!HB) HB=L_.mapear(r,BAIXA); estado='b'; continue; }
+    if(c0==='cod. item'){ if(!HI) HI=L_.mapear(r,ITEM); estado='i'; continue; }
+    if(c0==='cod. financeiro'){ if(!HF) HF=L_.mapear(r,FIN); estado='f'; continue; }
+    if(c0==='total'){ estado=''; continue; }
+    if(!/^\d+$/.test(String(r[0]??'').trim())) continue;
+    if(estado==='b'&&HB){
+      const g=k=>HB[k]!=null?r[HB[k]]:''; const loja=L_.loja(g('empresa')); estado='';
+      if(!loja){semLoja++;cur=null;continue;}
+      const [cc,cn]=L_.codNome(g('cadastro'));
+      cur={loja_id:loja,baixa:so(g('baixa')),data_baixa:data(g('data')),tipo_baixa:txt(g('tipo')),cadastro_codigo:cc,cadastro_nome:cn,
+        data_recebimento:data(g('receb')),complemento:txt(g('compl')),data_media:data(g('media')),usuario:txt(String(g('usuario')).replace(/^\d+\s*-\s*/,'')),formas:[],titulos:[]};
+      regs.push(cur); continue;
+    }
+    if(estado==='i'&&HI&&cur){
+      const g=k=>HI[k]!=null?r[HI[k]]:'';
+      cur.formas.push({ordem:cur.formas.length+1,forma:txt(g('forma')),conta:txt(g('conta')),valor:num(g('valor')),data_recebimento:data(g('receb')),conciliado:nrm(g('conciliado'))==='sim'});
+      continue;
+    }
+    if(estado==='f'&&HF&&cur){
+      const g=k=>HF[k]!=null?r[HF[k]]:'';
+      cur.titulos.push({ordem:cur.titulos.length+1,cod_financeiro:so(g('cod')),nome:txt(g('nome')),doc:txt(g('doc')),tipo:txt(g('tipo')),vencimento:data(g('venc')),
+        nr_nota:so(g('nota')),valor_documento:num(g('vdoc')),juros:num(g('juros')),multa:num(g('multa')),desconto:num(g('desconto')),valor_adiantado:num(g('adiant')),
+        valor_baixado:num(g('baixado')),emissao:data(g('emissao')),documento:txt(g('documento')),pedido_numero:lado==='receber'?pedidoDoDocumento(g('documento')):null,portador:txt(g('portador'))});
+    }
+  }
+  if(!lado) erros.push('Não reconheci o relatório. Use "Relação de Baixas de Contas a Receber – Analítico" ou "… a Pagar – Analítico".');
+  if(!HB) erros.push('Não encontrei as baixas (linhas "Baixa / Dt. baixa / Tipo da baixa"). Exporte o relatório <b>Analítico</b>.');
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/data d[ae] baixa/.test(f)) avisos.push('O período não foi filtrado pela <b>data da baixa</b>.');
+  const emps=filtros.filter(x=>/^\d+\s*-\s*\d+\s*-\s*(PVA|RV)/i.test(x.trim())); if(emps.length===1) avisos.push('O filtro de Empresa tem só <b>uma loja</b>. O combinado é exportar as duas lojas juntas.');
+  if(semLoja) avisos.push(`${semLoja} baixa(s) sem loja reconhecida foram ignoradas.`);
+  const pm=filtros.map(x=>x.match(/data d[ae] baixa d?e?\s*(\d{2}\/\d{2}\/\d{4})\s*at[eé]\s*(\d{2}\/\d{2}\/\d{4})/i)).find(Boolean);
+  const u=L_.unicos(regs,x=>x.loja_id+'|'+x.baixa,avisos,'baixa');
+  return {regs:u,lado,filtros,avisos,erros,total,periodo:pm?[L_.data(pm[1]),L_.data(pm[2])]:null};
+}
+
+// ---------- Gerenciamento de Entregas – Por Entregas – Analítico ----------
+// Seções: "Entregas geradas", "Entregas pendentes", "Sem agendamento"; cada entrega = cabeçalho + linha + "Produto…" + itens.
+function lerRelatorioEntregas(rows){
+  const {nrm,num,txt,so,data}=L_;
+  const CAB={pedido:'Pedido',entrega:'Entrega',cliente:'Cliente',tel:'Telefone',cadastro:'Data cadastro',data_entrega:'Data entrega',prev_menor:'Menor previsão entrega',
+    prev_maior:'Maior previsão entrega',local:'Local',tipo_controle:'Tipo controle entrega',sep:'Status da separação',man:'Status do manifesto',ent:'Status da entrega no manifesto',
+    empresa:'Empresa',valor:'Valor total',peso:'Peso',bairro:'Bairro',cidade:'Cidade',inicio:'Previsão início atividades entrega',duracao:'Duração processo entrega'};
+  const filtros=[], avisos=[], erros=[], regs=[]; let H=null, secao=null, cur=null, rodape=false, semLoja=0; const qtd={};
+  const SEC={'entregas geradas':'gerada','entregas pendentes':'pendente','sem agendamento':'sem_agendamento'};
+  const horas=v=>{const s=nrm(v);if(!s)return null;const h=s.match(/(\d+)\s*hora/),m=s.match(/(\d+)\s*minuto/);return (h?+h[1]:0)+(m?+m[1]/60:0)};
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(/^qtd\. entregas:/.test(c0)){ secao=SEC[nrm(r[1])]||null; if(secao) qtd[secao]=num(String(r[0]).replace(/^.*?:\s*/,'')); cur=null; continue; }
+    if(c0==='pedido'&&nrm(r[1])==='entrega'){ if(!H) H=L_.mapear(r,CAB); continue; }
+    if(!c0&&nrm(r[1])==='produto'){ continue; }
+    if(H&&secao&&/^[\d.]+$/.test(String(r[0]??'').trim())){
+      const g=k=>H[k]!=null?r[H[k]]:''; const loja=L_.loja(g('empresa')); cur=null;
+      if(!loja){semLoja++;continue;}
+      const [cc,cn]=L_.codNome(g('cliente'));
+      cur={secao,loja_id:loja,pedido:so(g('pedido')),entrega:so(g('entrega')),cliente_codigo:cc,cliente_nome:cn,telefone:txt(g('tel')),
+        data_cadastro:data(g('cadastro')),data_entrega:data(g('data_entrega')),prev_menor:data(g('prev_menor')),prev_maior:data(g('prev_maior')),
+        local:txt(String(g('local')).replace(/^\d+\s*-\s*/,'')),tipo_controle:txt(g('tipo_controle')),status_separacao:txt(g('sep')),status_manifesto:txt(g('man')),
+        status_entrega:txt(g('ent')),valor:num(g('valor')),peso:num(g('peso')),bairro:txt(g('bairro')),cidade:txt(g('cidade')),
+        previsao_inicio:L_.dataHora(g('inicio')),duracao_horas:horas(g('duracao')),itens:[]};
+      regs.push(cur); continue;
+    }
+    if(!c0&&cur&&/^[\d.]+$/.test(String(r[1]??'').trim())){
+      const it={ordem:cur.itens.length+1,codigo:so(r[1]),nome:txt(r[2]),marca:txt(r[3])};
+      if(cur.secao==='gerada') Object.assign(it,{lote:txt(r[4]),unidade:txt(r[5]),peso:num(r[6]),quantidade:num(r[8])});
+      else Object.assign(it,{data_item:data(r[4]),situacao:txt(r[5]),unidade:txt(r[7]),peso:num(r[8]),quantidade:num(r[10])});
+      cur.itens.push(it);
+    }
+  }
+  if(!H) erros.push('Não encontrei as entregas (colunas Pedido, Entrega, Cliente…). É o relatório "Gerenciamento de Entregas – Por Entregas – Analítico"?');
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/entregas pendentes/.test(f)) avisos.push('O "Tipo de busca" não incluiu as <b>entregas pendentes</b>.');
+  if(f&&!/sem agendamento/.test(f)) avisos.push('O "Tipo de busca" não incluiu as entregas <b>sem agendamento</b>.');
+  if(/gerar manifesto/.test(f)) avisos.push('O "Tipo de controle" foi filtrado por <b>Gerar manifesto</b>: as entregas abertas ficam de fora. Use <b>Não filtrar</b>.');
+  if(semLoja) avisos.push(`${semLoja} entrega(s) sem loja reconhecida foram ignoradas.`);
+  const ger=L_.unicos(regs.filter(x=>x.secao==='gerada'),x=>x.loja_id+'|'+x.entrega,avisos,'entrega');
+  const outras=regs.filter(x=>x.secao!=='gerada');
+  const conta={}; regs.forEach(x=>conta[x.secao]=(conta[x.secao]||0)+1);
+  return {regs:ger.concat(outras),filtros,avisos,erros,qtd,conta};
+}
+
+// ---------- Relação de Estoque por Local (uma loja por arquivo, PVA_/RV_ no nome) ----------
+function lerRelatorioEstoque(rows){
+  const {nrm,num,txt,so}=L_;
+  const filtros=[], avisos=[], erros=[], regs=[]; let H=null, locais=[], rodape=false, total=null;
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(nrm(r[0])==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='produto'&&nrm(r[1])==='nome'){
+      H=L_.mapear(r,{produto:'Produto',nome:'Nome',marca:'Marca',codorig:'Código original',unidade:'Unidade',custo:'Preço de custo',qtd_total:'Qtd. total',valor_total:'Total custo estoque'});
+      locais=[]; r.forEach((c,i)=>{ const n=String(c).trim(); if(i>(H.custo??6)&&n&&!/^total|^qtd\./i.test(n)) locais.push({nome:n,iq:i,iv:nrm(r[i+1]).startsWith('total')?i+1:null}); });
+      continue;
+    }
+    if(nrm(r[1])==='total geral:'){ total=num(r[r.length-1]); continue; }
+    if(H&&/^[\d.]+$/.test(String(r[0]??'').trim())){
+      const custo=num(r[H.custo]);
+      const base={codigo:so(r[H.produto]),nome:txt(r[H.nome]),marca:txt(r[H.marca]),cod_original:txt(r[H.codorig]),unidade:txt(r[H.unidade]),custo};
+      for(const l of locais){ const q=num(r[l.iq]); if(!q) continue; regs.push({...base,local:l.nome,quantidade:q,valor:l.iv!=null?(num(r[l.iv])??0):null}); }
+    }
+  }
+  if(!H) erros.push('Não encontrei o cabeçalho (Produto, Nome, Marca…). É o relatório "Relação de Estoque por Local"?');
+  else if(!locais.length) erros.push('O relatório veio sem as colunas de local (Loja, Depósito…).');
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/ultima entrada/.test(f)) avisos.push('O tipo de custo não é <b>Custo da última entrada</b>, como combinado.');
+  if(f&&!/negativo/.test(f)) avisos.push('O filtro não incluiu o estoque <b>negativo</b>.');
+  return {regs,filtros,avisos,erros,total,locais:locais.map(l=>l.nome)};
+}
+
+// ---------- Relação de Contas a Pagar / a Receber – Analítico ----------
+function lerRelatorioTitulos(rows){
+  const {nrm,num,txt,so,data}=L_;
+  const filtros=[], avisos=[], erros=[], regs=[]; let lado=null, H=null, rodape=false, totais=false; const total={}; let semLoja=0, qtdArquivo=null;
+  const PAG={codigo:'Código',cad:'Cliente/Fornecedor',nome:'Nome do Cliente/Fornecedor',doc:'CPF/CNPJ',situacao:'Situação',documento:'Documento',nota:'Nr. nota',venc:'Data venc.',
+    pagto:'Data pagto',vdoc:'Vlr. docum',adiant:'Vlr. adiant',saldo:'Sld. devedor',tipo:'Tipo',liquido:'Vlr. líquido',juros:'Juros',multa:'Multa',desconto:'Desconto',
+    emissao:'Dt. emissão',portador:'Portador',plano_cod:'Cód. Plano financeiro',plano:'Nome Plano financeiro',empresa:'Empresa',centro:'Centro de custos',obs:'Observação'};
+  const REC={codigo:'Código',cad:'Cli./forn.',nome:'Nome',situacao:'Situação',documento:'Documento',nota:'Nr. nota',venc:'Data venc.',pagto:'Data receb.',
+    vdoc:'Valor documento',adiant:'Valor adiantamento',saldo:'Saldo devedor',tipo:'Tipo',liquido:'Valor líquido',juros:'Juros',multa:'Multa',desconto:'Desconto',
+    emissao:'Data emissão',portador:'Portador',plano_cod:'Cód. plano financeiro',plano:'Nome plano financeiro',empresa:'Empresa',centro:'Centro de custos',obs:'Observação',
+    doc:'CNPJ/CPF',cidade:'Cidade',tel:'Telefone 1',usuario:'Nome usuário inserção'};
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(!lado&&/relacao de contas a (pagar|receber)/.test(c0)){ lado=/pagar/.test(c0)?'pagar':'receber'; continue; }
+    const tr=r.find(x=>/^total de registros:/i.test(String(x).trim())); if(tr) qtdArquivo=num(String(tr).replace(/^.*?:\s*/,''));
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='total geral'){ totais=true; continue; }
+    if(totais){ if(c0.endsWith(':')) total[c0.replace(/:$/,'')]=num(r[2]); continue; }
+    if(c0==='codigo'&&lado&&!H){ H=L_.mapear(r,lado==='pagar'?PAG:REC); continue; }
+    if(H&&/^[\d.]+$/.test(String(r[0]??'').trim())){
+      const g=k=>H[k]!=null?r[H[k]]:''; const loja=L_.loja(g('empresa'));
+      if(!loja){semLoja++;continue;}
+      const sit=String(g('situacao')).trim();
+      regs.push({loja_id:loja,codigo:so(g('codigo')),cadastro_codigo:so(g('cad')),nome:txt(g('nome')),doc:txt(g('doc')),situacao:sit==='Bx'?'Baixado':sit==='Ab'?'Aberto':txt(sit),
+        documento:txt(g('documento')),nr_nota:so(g('nota')),vencimento:data(g('venc')),pagamento:data(g('pagto')),valor_documento:num(g('vdoc')),valor_adiantado:num(g('adiant')),
+        saldo:num(g('saldo'))??0,tipo:txt(g('tipo')),valor_liquido:num(g('liquido')),juros:num(g('juros')),multa:num(g('multa')),desconto:num(g('desconto')),emissao:data(g('emissao')),
+        portador:txt(String(g('portador')).replace(/^[\d.]+\s*-\s*/,'')),plano_codigo:txt(g('plano_cod')),plano_nome:txt(g('plano')),
+        centro_custos:txt(String(g('centro')).replace(/^\d+\s*-\s*/,'')),observacao:txt(g('obs')),cidade:txt(g('cidade')),telefone:txt(g('tel')),usuario:txt(g('usuario')),
+        pedido_numero:lado==='receber'?pedidoDoDocumento(g('documento')):null});
+    }
+  }
+  if(!lado) erros.push('Não reconheci o relatório. Use "Relação de Contas a Pagar – Analítico" ou "Relação de Contas a Receber – Analítico".');
+  else if(!H) erros.push('Não encontrei o cabeçalho dos títulos (Código, Situação, Documento…).');
+  const f=filtros.map(nrm).join(' | ');
+  if(f&&!/vencimento|venc\./.test(f)) avisos.push('O período não foi filtrado pela <b>data de vencimento</b>. Filtrando pela emissão, os títulos antigos ainda em aberto ficam de fora do saldo. O combinado: vencimento de 01/01/2025 a 31/12/2045.');
+  if(/tipos da conta.*credito/.test(f)&&lado==='pagar') avisos.push('Este arquivo tem <b>só os créditos</b>. Para o saldo completo, exporte com todos os tipos (os créditos já vêm junto).');
+  if(semLoja) avisos.push(`${semLoja} título(s) sem loja reconhecida foram ignorados.`);
+  const u=L_.unicos(regs,x=>x.codigo,avisos,'título');
+  return {regs:u,lado,filtros,avisos,erros,total,qtdArquivo};
+}
+
+// ---------- Demonstrativo de Resultado (DRE) – uma loja por arquivo (PVA_/RV_ no nome) ----------
+function lerRelatorioDRE(rows){
+  const {nrm,num,txt}=L_;
+  const MES={jan:1,fev:2,mar:3,abr:4,mai:5,jun:6,jul:7,ago:8,set:9,out:10,nov:11,dez:12};
+  const avisos=[], erros=[], regs=[]; let H=null, ordem=0, iCod=-1, regime='';
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(/^demonstrativo de resultado/.test(c0)){ regime=c0; continue; }
+    if(c0==='plano financeiro'){ H=[]; r.forEach((c,i)=>{ const m=nrm(c).match(/^([a-z]{3}) (\d{4})$/); if(m&&MES[m[1]]) H.push({i,ano:+m[2],mes:MES[m[1]]}); }); iCod=r.findIndex(c=>/codigo plano/.test(nrm(c))); continue; }
+    if(!H||!String(r[0]??'').trim()) continue;
+    const bruto=String(r[0]); const desc=bruto.trim(); const nivel=(bruto.match(/^\s*/)[0].length>=4)?2:/^[A-ZÀ-Ú0-9 ()\/.\-–,]+$/.test(desc)?1:0;
+    const cod=iCod>=0?txt(r[iCod]):null; ordem++;
+    const chave=cod||('=' + nrm(desc));
+    for(const h of H){ const v=num(r[h.i]); regs.push({ano:h.ano,mes:h.mes,chave,codigo:cod,descricao:desc,nivel:cod?nivel:0,ordem,valor:v??0}); }
+  }
+  if(!H) erros.push('Não encontrei a linha "Plano financeiro" com os meses. É o "Demonstrativo de Resultado" analítico?');
+  if(H&&!regs.some(x=>x.chave==='=margem de contribuicao')) avisos.push('Não achei a linha "Margem de contribuição" — confira se o modelo é o Analítico.');
+  return {regs,avisos,erros,filtros:[],anos:[...new Set(regs.map(x=>x.ano))],linhas:ordem};
+}
+
+// ---------- Conferência e envio dos relatórios novos (16/10/2026) ----------
+// DEST diz para onde vai cada arquivo: tipo da importação (rotina), área de espera e RPC de prévia/gravação.
+let DEST=null, regsNovos=[];
+const ok=v=>v!=null;
+const confere=(a,b,txt)=>!ok(b)?'':Math.abs(a-b)<0.05?' ✓':` (<b>atenção:</b> ${txt||'o relatório diz'} ${typeof b==='number'&&Math.abs(b)>999?brl(b):b})`;
+function iniciarConferencia(f,n,rotulo){
+  $('passoColunas').classList.remove('hide'); $('colMsgs').innerHTML=''; $('mapear').innerHTML='';
+  drop.innerHTML=`<b>${esc(f.name)}</b> — ${n.toLocaleString('pt-BR')} ${rotulo} lidos. Clique para trocar.`;
+}
+function seguirOuAvisar(r,enviar){
+  r.avisos.forEach(a=>msg('colMsgs',a,'warn'));
+  if(r.avisos.length){ $('mapear').innerHTML='<div class="row" style="margin-top:10px"><button id="btnSeguir">Entendi, continuar</button></div>'; $('btnSeguir').onclick=()=>{$('mapear').innerHTML='';enviar();}; return; }
+  enviar();
+}
+function mostrarFiltros(r){ if(r.filtros&&r.filtros.length) msg('colMsgs','Filtros usados no Santri: '+r.filtros.filter(x=>!/^(Tipo de agrupamento:|Nenhum|\d+ - \d+ - )/.test(x.trim())).map(x=>esc(x.replace(/\.{2,}/g,''))).join(' · '),'info'); }
+function bloqueios(r){ r.erros.forEach(e=>msg('colMsgs','<b>Importação bloqueada:</b> '+e,'err')); return r.erros.length>0; }
+function lojaDoArquivo(){
+  const lj=$('lojaImp').value;
+  if(!lj){ msg('colMsgs','<b>De qual loja é este arquivo?</b> O nome não começa com PVA_ ou RV_. Escolha a loja no passo 1 (ou renomeie o arquivo) e arraste de novo.','err'); return null; }
+  msg('colMsgs',`Loja deste arquivo: <b>${lj==='1'?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Se estiver errado, troque no passo 1 e arraste o arquivo de novo.`,'warn');
+  return lj==='1'?'PVA':'RV';
+}
+
+function conferirOrcamentos(rows,f){
+  const r=lerRelatorioOrcamentos(rows); regsNovos=r.regs;
+  iniciarConferencia(f,r.regs.length,'orçamentos'); mostrarFiltros(r);
+  if(bloqueios(r)) return;
+  if(!r.regs.length) return msg('colMsgs','Nenhum orçamento encontrado no arquivo.','err');
+  const tot=r.regs.reduce((s,x)=>s+(x.vlr_liquido||0),0);
+  msg('colMsgs',`Arquivo de orçamentos <b>${r.status==='Cancelado'?'cancelados':'abertos (status Orçamento)'}</b>: ${r.regs.length.toLocaleString('pt-BR')}${confere(r.regs.length,r.qtdArquivo)} · <b>${brl(tot)}</b>${confere(tot,r.totalArquivo,'o "Total Geral" do relatório é')}.`,'ok');
+  DEST={imp:r.status==='Cancelado'?'orcamentos_cancelados':'orcamentos_abertos',stg:'orcamentos',rpc:'orcamentos'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+function conferirBaixas(rows,f,esperado){
+  const r=lerRelatorioBaixas(rows); regsNovos=r.regs.map(x=>({...x,lado:r.lado}));
+  iniciarConferencia(f,r.regs.length,'baixas'); mostrarFiltros(r);
+  if(esperado&&r.lado&&r.lado!==esperado) r.erros.push(`Este arquivo é de baixas a <b>${r.lado}</b>. Aqui o esperado é baixas a ${esperado}.`);
+  if(bloqueios(r)) return;
+  if(!r.regs.length) return msg('colMsgs','Nenhuma baixa encontrada no arquivo.','err');
+  const F=r.regs.flatMap(x=>x.formas), T=r.regs.flatMap(x=>x.titulos);
+  const vf=F.reduce((s,x)=>s+(x.valor||0),0), vcg=r.regs.filter(x=>/cr[eé]dito gerado/i.test(x.tipo_baixa||'')).flatMap(x=>x.formas).reduce((s,x)=>s+(x.valor||0),0);
+  const tb=r.total['tot. baixas'], cg=r.total['credito gerado']||0;
+  const bate=ok(tb)&&[vf,vf+cg,vf-vcg].some(v=>Math.abs(v-tb)<1);
+  msg('colMsgs',`Baixas a <b>${r.lado}</b>: ${r.regs.length.toLocaleString('pt-BR')} baixas, ${T.length.toLocaleString('pt-BR')} títulos · pago/recebido <b>${brl(vf)}</b>${!ok(tb)?'':bate?' ✓ confere com o "Tot. baixas" do relatório':` (<b>atenção:</b> o "Tot. baixas" do relatório é ${brl(tb)})`}.`,bate||!ok(tb)?'ok':'warn');
+  if(r.lado==='receber'){ const cp=T.filter(t=>t.pedido_numero).length; msg('colMsgs',`${cp.toLocaleString('pt-BR')} de ${T.length.toLocaleString('pt-BR')} títulos trazem o nº do pedido no Documento (é por ele que o sistema sabe que o cliente pagou).`,'info'); }
+  DEST={imp:r.lado==='receber'?'receber_baixas':'pagar_baixas',stg:'baixas',rpc:'baixas'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+function conferirEntregas(rows,f){
+  const r=lerRelatorioEntregas(rows); regsNovos=r.regs;
+  iniciarConferencia(f,r.regs.length,'entregas'); mostrarFiltros(r);
+  if(bloqueios(r)) return;
+  if(!r.regs.length) return msg('colMsgs','Nenhuma entrega encontrada no arquivo.','err');
+  const N={gerada:'geradas',pendente:'pendentes',sem_agendamento:'sem agendamento'};
+  msg('colMsgs','Entregas no arquivo: '+Object.keys(N).map(k=>`${N[k]} <b>${(r.conta[k]||0).toLocaleString('pt-BR')}</b>${confere(r.conta[k]||0,r.qtd[k])}`).join(' · ')+'.','ok');
+  DEST={imp:'entregas',stg:'entregas',rpc:'entregas'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+function conferirEstoque(rows,f){
+  const r=lerRelatorioEstoque(rows); regsNovos=r.regs;
+  iniciarConferencia(f,r.regs.length,'linhas de estoque (produto × local)'); mostrarFiltros(r);
+  if(bloqueios(r)) return;
+  const sg=lojaDoArquivo(); if(!sg) return;
+  const tot=r.regs.reduce((s,x)=>s+(x.valor||0),0);
+  msg('colMsgs',`Locais: ${r.locais.map(esc).join(', ')} · valor em estoque <b>${brl(tot)}</b>${confere(tot,r.total,'o "TOTAL GERAL" do relatório é')}.`,'ok');
+  DEST={imp:'estoque_'+sg,stg:'estoque',rpc:'estoque'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+// "Contas a pagar e a receber": aceita os três arquivos (contas a pagar, contas a receber, baixas a pagar) e reconhece pelo título
+function conferirFinanceiro(rows,f){
+  const titulo=rows.slice(0,8).map(r=>L_.nrm(r[0])).join(' | ');
+  if(/baixas de contas a pagar/.test(titulo)) return conferirBaixas(rows,f,'pagar');
+  if(/baixas de contas a receber/.test(titulo)){ iniciarConferencia(f,0,'registros'); return msg('colMsgs','Este é o relatório de <b>baixas a receber</b>: escolha "Baixas de contas a receber" no passo 1.','err'); }
+  const r=lerRelatorioTitulos(rows); regsNovos=r.regs.map(x=>({...x,lado:r.lado}));
+  iniciarConferencia(f,r.regs.length,'títulos'); mostrarFiltros(r);
+  if(bloqueios(r)) return;
+  if(!r.regs.length) return msg('colMsgs','Nenhum título encontrado no arquivo.','err');
+  const sal=r.regs.reduce((s,x)=>s+(x.saldo||0),0), doc=r.regs.reduce((s,x)=>s+(x.valor_documento||0),0);
+  const tSal=r.total['total saldo devedor']??r.total['saldo devedor'], tDoc=r.total['total dos titulos']??r.total['valor documento'];
+  msg('colMsgs',`Contas a <b>${r.lado}</b>: ${r.regs.length.toLocaleString('pt-BR')} títulos${confere(r.regs.length,r.qtdArquivo)} · valor <b>${brl(doc)}</b>${confere(doc,tDoc)} · saldo em aberto <b>${brl(sal)}</b>${confere(sal,tSal)}.`,'ok');
+  DEST={imp:r.lado,stg:'titulos',rpc:'titulos'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+function conferirDRE(rows,f){
+  const r=lerRelatorioDRE(rows); regsNovos=r.regs;
+  iniciarConferencia(f,r.linhas||0,'linhas do plano');
+  if(bloqueios(r)) return;
+  const sg=lojaDoArquivo(); if(!sg) return;
+  const mc=r.regs.filter(x=>x.chave==='=margem de contribuicao'&&x.valor).map(x=>`${String(x.mes).padStart(2,'0')}/${x.ano}: ${brl(x.valor)}`);
+  msg('colMsgs',`DRE ${r.anos.join(', ')} · ${r.linhas} linhas do plano. Margem de contribuição: ${mc.join(' · ')||'—'}.`,'ok');
+  DEST={imp:'dre_'+sg,stg:'dre',rpc:'dre'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
+// prévia dos tipos novos
+function previaNovos(data){
+  const k=(n,t)=>`<div class="kpi"><b>${Number(n||0).toLocaleString('pt-BR')}</b><span>${t}</span></div>`, d=s=>s?s.split('-').reverse().join('/'):'';
+  const base=k(data.novos,'novos')+k(data.alterados,'alterados')+k(data.iguais,'já estavam iguais');
+  $('previaMsgs').innerHTML='';
+  if(DEST.rpc==='orcamentos'){
+    $('kpis').innerHTML=k(data.no_arquivo,`${data.status==='Cancelado'?'cancelados':'orçamentos abertos'} · ${brl(data.valor)}`)+k(data.pva,`PVA · ${brl(data.valor_pva)}`)+k(data.rv,`RV · ${brl(data.valor_rv)}`)+base;
+    msg('previaMsgs','Por vendedor: '+(data.vendedores||[]).map(v=>`${esc(v.nome)} ${v.qtd} (${brl(v.valor)})`).join(' · '),'info');
+    if(data.mudaram_status>0) msg('previaMsgs',`${data.mudaram_status} orçamento(s) mudaram de situação desde a última importação (ex.: aberto → cancelado). Fica no histórico.`,'info');
+    if(data.viraram_pedido>0) msg('previaMsgs',`${data.viraram_pedido} deles já aparecem como pedido nas vendas do Santri.`,'info');
+    msg('previaMsgs','O relatório não traz a data do orçamento: o sistema estima pela numeração (o número do orçamento é sequencial e é o mesmo do pedido).','info');
+    return; }
+  if(DEST.rpc==='baixas'){
+    $('kpis').innerHTML=k(data.no_arquivo,`baixas a ${data.lado} · ${brl(data.valor_formas)}`)+k(data.titulos,`títulos baixados · ${brl(data.valor_titulos)}`)+(data.lado==='pagar'?k(data.por_tipo?.['Crédito gerado'],`pagamentos antecipados (crédito gerado) · ${brl(data.credito_gerado)}`):k(data.pedidos,`pedidos com pagamento · ${data.pedidos_no_sistema} nas vendas do sistema`))+base+k(data.sumiram,'estornadas no Santri (somem do período)');
+    msg('previaMsgs',`Período: <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} baixas · tipos: `+Object.entries(data.por_tipo||{}).map(([t,n])=>`${esc(t)} ${n}`).join(' · '),'info');
+    if(data.sumiram>0) msg('previaMsgs',`${data.sumiram} baixa(s) que estavam no sistema não vieram neste arquivo (dentro do mesmo período): ficam marcadas como estornadas, com histórico.`,'warn');
+    return; }
+  if(DEST.rpc==='entregas'){
+    $('kpis').innerHTML=k(data.geradas,'entregas geradas')+k(data.aguardando,`aguardando carregamento · ${brl(data.aguardando_valor)}`)+k(data.concluidas,'entregues (Total)')+k(data.pendentes,`pendentes · ${brl(data.pendentes_valor)}`)+k(data.sem_agendamento,`sem agendamento · ${brl(data.sem_agendamento_valor)}`)+base;
+    msg('previaMsgs',`Geradas de <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} · ${data.pedidos_no_sistema} de ${data.pedidos} pedidos estão nas vendas do sistema.`,'info');
+    if(data.pendentes_vencidas>0) msg('previaMsgs',`${data.pendentes_vencidas} entrega(s) pendente(s) com a maior previsão já vencida.`,'warn');
+    if(data.concluidas_agora>0) msg('previaMsgs',`${data.concluidas_agora} entrega(s) foram concluídas desde a última importação.`,'info');
+    msg('previaMsgs','Pendentes e sem agendamento entram como foto de hoje (vale a última importação). A "Data entrega" do Santri é o dia em que a entrega foi gerada, não a entrega ao cliente.','info');
+    return; }
+  if(DEST.rpc==='estoque'){
+    const pl=data.por_local||{};
+    $('kpis').innerHTML=k(data.produtos,`produtos · ${brl(data.valor)}`)+Object.entries(pl).map(([l,v])=>k(v.produtos,`${esc(l)} · ${brl(v.valor)}`)).join('')+k(data.sem_custo,'sem custo')+k(data.sem_entrada_2026,`sem entrada em 2026 · ${brl(data.sem_entrada_2026_valor)}`);
+    msg('previaMsgs',`Loja: <b>${data.loja_id==1?'PVA – Primavera do Leste':'RV – Rio Verde'}</b>. Vira a foto do estoque de hoje (se importar de novo hoje, vale a última).`+(data.foto_anterior?` Foto anterior: ${new Date(data.foto_anterior.em).toLocaleDateString('pt-BR')} · ${brl(data.foto_anterior.valor)}.`:''),'info');
+    (data.custo_suspeito||[]).forEach(c=>msg('previaMsgs',`<b>Custo suspeito:</b> ${esc(c.codigo)} ${esc(c.nome)} com custo ${brl(c.custo)} soma ${brl(c.valor)} — mais de 20% do estoque da loja. Corrija o custo da última entrada no Santri.`,'warn'));
+    return; }
+  if(DEST.rpc==='titulos'){
+    $('kpis').innerHTML=k(data.no_arquivo,`títulos a ${data.lado}`)+k(data.abertos,`em aberto · ${brl(data.saldo)}`)+k(0,`vencido · ${brl(data.saldo_vencido)}`).replace('<b>0</b>','<b>—</b>')+(data.lado==='pagar'?k(0,`antecipado (Pre) · ${brl(data.saldo_antecipado)}`).replace('<b>0</b>','<b>—</b>'):'')+k(data.sem_plano,'sem plano financeiro')+base;
+    msg('previaMsgs',`Vencimentos de <b>${d(data.venc_de)} a ${d(data.venc_ate)}</b> · PVA ${data.pva} · RV ${data.rv}. Vira a foto de hoje das contas a ${data.lado}.`,'info');
+    if(data.baixados_agora>0) msg('previaMsgs',`${data.baixados_agora} título(s) foram baixados desde a última importação.`,'info');
+    if(data.sumiram>0) msg('previaMsgs',`${data.sumiram} título(s) da foto anterior não vieram neste arquivo (excluídos no Santri ou fora do filtro). Saem da foto atual.`,'warn');
+    return; }
+  if(DEST.rpc==='dre'){
+    $('kpis').innerHTML=k(data.no_arquivo,'linhas do plano')+base;
+    msg('previaMsgs',`Loja: <b>${data.loja_id==1?'PVA – Primavera do Leste':'RV – Rio Verde'}</b> · `+(data.meses||[]).map(m=>`${String(m.mes).padStart(2,'0')}/${m.ano}: receita ${brl(m.receita)}, MC ${brl(m.mc)}, resultado ${brl(m.resultado)}`).join('<br>'),'info');
+    if(data.alterados>0) msg('previaMsgs',`${data.alterados} valor(es) mudaram em relação à última DRE importada (mês já fechado que mudou fica no histórico).`,'warn');
+    return; }
+}
+
 // ---------- Conversões ----------
 const numBR=v=>{v=String(v??'').trim();if(!v)return null;if(/^-?[\d.]+,\d+$/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');const n=Number(v);return isNaN(n)?null:n};
 const dataBR=v=>{const m=String(v||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:null};
@@ -677,11 +1096,12 @@ async function enviarStaging(){
 }
 
 async function previa(){
-  const {data,error}=await sb.rpc('previa_importacao_'+TIPO(),{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc('previa_importacao_'+RPC(),{p_importacao:importacaoId});
   $('passoPrevia').classList.remove('hide');
   if(error){ $('kpis').innerHTML=''; return msg('previaMsgs','Erro na prévia: '+error.message+' — tente de novo; se repetir, avise o Claude com um print desta tela.','err'); }
   const k=(n,t)=>`<div class="kpi"><b>${Number(n).toLocaleString('pt-BR')}</b><span>${t}</span></div>`;
   const pr=TIPO()!=='produtos'; $('inativar').parentElement.style.display=pr?'none':'flex'; $('btnPendencias').classList.toggle('hide',pr);
+  if(DEST) return previaNovos(data);
   if(TIPO()==='entradas'){ const d=s=>s?s.split('-').reverse().join('/'):'';
     $('kpis').innerHTML=k(data.no_arquivo,`notas · ${brl(data.valor_notas)}`)+k(data.revenda,`de revenda · ${data.estoque??0} para estoque`)+k(data.uso_consumo,'uso e consumo')+k(data.amostra_bonificacao,'amostra / bonificação')+k(data.reposicao??0,'reposição de quebra')+k(data.abertas,'ainda abertas')+k(data.novos,'novas')+k(data.alterados,'alteradas')+k(data.iguais,'já estavam iguais');
     $('previaMsgs').innerHTML=''; msg('previaMsgs',`Cadastradas de <b>${d(data.de)} a ${d(data.ate)}</b> · PVA ${data.pva} · RV ${data.rv} notas · ${Number(data.itens).toLocaleString('pt-BR')} itens · frete em CT-e ${brl(data.frete_cte)}.`,'info');
@@ -715,11 +1135,11 @@ $('btnPendencias').onclick=()=>{
 };
 $('btnAplicar').onclick=async()=>{
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
-  const {data,error}=await sb.rpc('aplicar_importacao_'+TIPO(),TIPO()==='produtos'?{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked}:{p_importacao:importacaoId});
+  const {data,error}=await sb.rpc('aplicar_importacao_'+RPC(),TIPO()==='produtos'?{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked}:{p_importacao:importacaoId});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
   $('resultado').classList.remove('hide');
   if(error){ $('resultado').innerHTML=`<div class="msg err">Nada foi gravado. Erro: ${error.message}</div>`; return; }
-  if(['compras','entradas'].includes(TIPO())) await sb.from(STG()).delete().eq('importacao_id',importacaoId); // limpa a área de espera
+  if(DEST||['compras','entradas'].includes(TIPO())) await sb.from(STG()).delete().eq('importacao_id',importacaoId); // limpa a área de espera
   $('resultado').innerHTML=`<h2>Importação concluída</h2><div class="msg ok">${data.novos} novos, ${data.alterados} alterados${data.inativados?`, ${data.inativados} inativados`:''}${data.iguais!=null?`, ${data.iguais} sem mudança`:''}${data.ligados_agora?` · ${data.ligados_agora} ligados a pedidos lançados`:''}. Registro nº ${importacaoId}.</div>`;
   $('passoPrevia').classList.add('hide'); historico(); carregarRotina();
 };
@@ -728,7 +1148,7 @@ async function cancelar(avisar){
   if(importacaoId){ await sb.from(STG()).delete().eq('importacao_id',importacaoId); await sb.from('importacoes').update({status:'cancelada'}).eq('id',importacaoId); }
   resetPassos(); if(avisar){$('resultado').classList.remove('hide');$('resultado').innerHTML='<div class="msg info">Importação cancelada. Nada foi gravado.</div>'} historico();
 }
-function resetPassos(){['passoColunas','passoEnvio','passoPrevia','resultado'].forEach(i=>$(i).classList.add('hide'));$('colMsgs').innerHTML='';$('previaMsgs').innerHTML='';$('barra').style.width='0';importacaoId=null;}
+function resetPassos(){['passoColunas','passoEnvio','passoPrevia','resultado'].forEach(i=>$(i).classList.add('hide'));$('colMsgs').innerHTML='';$('previaMsgs').innerHTML='';$('barra').style.width='0';importacaoId=null;DEST=null;}
 
 const nomeTipo=t=>{const r=ROTINA.find(x=>x.tipo===t||(x.tipos_importacao||[]).includes(t)); const m=t.match(/_(PVA|RV)$/); const b=ROTINA.find(x=>m&&x.tipo===t.replace(/_(PVA|RV)$/,'')); return (r||b)?((r||b).nome+(m?' · '+m[1]:'')):t;};
 async function historico(){
