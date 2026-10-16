@@ -29,7 +29,7 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
 #conteudo{flex:1;padding:16px;max-width:1200px;margin:0 auto;width:100%;padding-bottom:90px}
 #menuMob{display:none}
 @media (max-width:800px){#menu{display:none}#menuMob{display:flex;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--bd);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
-#menuMob a{flex:1;text-align:center;padding:10px 4px;font-size:12px;color:var(--mut);text-decoration:none}#menuMob a.on{color:var(--navy);font-weight:bold}#conteudo{padding:12px}}
+#menuMob{overflow-x:auto}#menuMob a{flex:1 0 auto;min-width:68px;text-align:center;padding:10px 6px;font-size:12px;color:var(--mut);text-decoration:none;white-space:nowrap}#menuMob a.on{color:var(--navy);font-weight:bold}#conteudo{padding:12px}}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
 .card h3{margin:0 0 8px;font-size:15px;color:var(--navy)}
 .linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -149,7 +149,10 @@ function iniciarLojaVer(){ let v=0; try{ v=+(localStorage.getItem('lojaVer')||0)
   PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER;
   if(veDuasLojas()&&filtro.escopo==='minhas'&&!filtro._ini){ filtro.escopo='todas'; } filtro._ini=1; }
 function montarMenu(){ iniciarLojaVer();
-  const itens=SETORES.includes(EU.papel)?[['#/pedidos','Pedidos'],['#/agenda','Agenda'],['#/compras','Compras'],['#/capas','Capas']]:[['#/capas','Capas'],['#/nova','+ Nova capa'],['#/painel','Painel'],['#/pedidos','Pedidos'],['#/agenda','Agenda'],...(veCompras()?[['#/compras','Compras']]:[]),['#/profissionais','Profissionais']]; if(ehDirecao()) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
+  const P=EU.papel, dir=ehDirecao(), cmp=veCompras();
+  const itens=SETORES.includes(P)?[['#/pedidos','Pedidos'],...(veRecebimentosJ()?[['#/recebimentos','Recebimentos']]:[]),['#/compras','Compras'],['#/chegada','Chegada'],['#/entregas','Entregas'],['#/estoque','Estoque'],...(veFinanceiroJ()?[['#/financeiro','Financeiro']]:[]),['#/agenda','Agenda'],['#/capas','Capas']]
+    :[...(dir?[['#/direcao','Direção']]:[]),['#/capas','Capas'],['#/nova','+ Nova capa'],['#/painel','Painel'],...(veOrcamentosJ()?[['#/orcamentos','Orçamentos']]:[]),['#/pedidos','Pedidos'],...(veRecebimentosJ()?[['#/recebimentos','Recebimentos']]:[]),...(cmp?[['#/compras','Compras'],['#/chegada','Chegada'],['#/entregas','Entregas'],['#/estoque','Estoque']]:[]),...(veFinanceiroJ()?[['#/financeiro','Financeiro']]:[]),['#/agenda','Agenda'],['#/profissionais','Profissionais']];
+  if(dir) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
   if(ehDirecao()||EU.importa_tudo||['gerente','compras','financeiro','logistica'].includes(EU.papel)) itens.push(['importadora.html','Importadora']);
   const seletor=veDuasLojas()?`<div style="padding:12px"><label style="color:#cfd8e3">Ver loja</label><select id="lojaVer" style="margin-top:4px"><option value="0">Ambas (PVA + RV)</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>`
     :`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
@@ -160,7 +163,7 @@ function montarMenu(){ iniciarLojaVer();
 }
 window.addEventListener('hashchange',rota);
 function rota(){
-  if(!EU) return; const h=location.hash||'#/capas';
+  if(!EU) return; const h=location.hash||(ehDirecao()?'#/direcao':'#/capas');
   document.querySelectorAll('#menu a,#menuMob a').forEach(a=>a.classList.toggle('on',h.startsWith(a.getAttribute('href'))));
   if(h.startsWith('#/capa/')) return abrirCapa(h.split('/')[2]);
   if(h==='#/nova') return novaCapa();
@@ -173,6 +176,13 @@ function rota(){
   if(h==='#/agenda') return telaAgenda();
   if(h==='#/painel') return telaPainel();
   if(h==='#/compras') return telaCompras();
+  if(h==='#/direcao') return telaDirecao();
+  if(h==='#/orcamentos') return telaOrcamentosJ();
+  if(h==='#/recebimentos') return telaRecebimentosJ();
+  if(h==='#/chegada') return telaChegadaJ();
+  if(h==='#/entregas') return telaEntregasJ();
+  if(h==='#/estoque') return telaEstoqueJ();
+  if(h==='#/financeiro') return telaFinanceiroJ();
   telaLista();
 }
 const sel=(lista,val,attrs='')=>`<select ${attrs}><option value=""></option>${(OP[lista]||[]).map(v=>`<option ${v===val?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
@@ -1322,6 +1332,7 @@ async function telaPedidos(){
   let q=sb.from('pedidos').select('id,capa_id,loja_id,numero_santri,cliente_pdf,vendedor_santri,data_fechamento,data_cliente_precisa,previsao_entrega,guarda_ate,local_mercadoria,total_pedido,status,no_deposito_em,na_transportadora_em').neq('status','Cancelado').order('data_fechamento');
   if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
   const {data,error}=await q.limit(1000); if(error) return erro(error);
+  const SAN=await situacaoSantriPedidos([...new Set(data.map(p=>p.numero_santri).filter(Boolean))]);
   const h=hoje(), dias=d=>d?Math.floor((new Date(h)-new Date(d))/864e5):null;
   const abertos=data.filter(p=>p.local_mercadoria!=='Entregue');
   const lista=PDF_.local==='abertos'?abertos:PDF_.local==='todos'?data:data.filter(p=>p.local_mercadoria===PDF_.local);
@@ -1334,12 +1345,12 @@ async function telaPedidos(){
      <div><label>Mostrar</label><select id="pdLocal"><option value="abertos">Não entregues</option>${locais.map(l=>`<option>${esc(l)}</option>`).join('')}<option value="todos">Todos</option></select></div></div></div>
    <div class="kpis" style="margin-bottom:12px">${locais.filter(l=>l!=='Entregue').map(l=>`<div class="kpi" data-loc="${esc(l)}" style="cursor:pointer"><b>${abertos.filter(p=>p.local_mercadoria===l).length}</b><span>${esc(l)} · ${brl(soma(l))}</span></div>`).join('')}
      <div class="kpi"><b class="${venc.length?'atras':''}">${venc.length}</b><span>com guarda vencida</span></div><div class="kpi"><b class="${semData.length?'atras':''}">${semData.length}</b><span>sem previsão de entrega</span></div></div>
-   <div class="card"><div class="tbl"><table><tr><th>Pedido</th><th>Cliente</th><th>Consultor</th><th>Fechamento</th><th>Dias</th><th>Onde está</th><th>Cliente precisa</th><th>Previsão entrega</th><th>Guarda até</th><th style="text-align:right">Valor</th></tr>
+   <div class="card"><div class="tbl"><table><tr><th>Pedido</th><th>Cliente</th><th>Consultor</th><th>Fechamento</th><th>Dias</th><th>Onde está</th><th>Cliente precisa</th><th>Previsão entrega</th><th>Guarda até</th><th style="text-align:right">Valor</th><th>No Santri</th></tr>
    ${lista.map(p=>{const d=dias(p.data_fechamento), gv=p.guarda_ate&&p.guarda_ate<h&&p.local_mercadoria!=='Entregue';
      return `<tr style="cursor:pointer" data-capa="${p.capa_id}"><td><b>${esc(p.numero_santri)}</b> <span class="mut">${esc(LOJAS.find(l=>l.id===p.loja_id)?.codigo||'')}</span></td><td>${esc((p.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,''))}</td><td>${esc((p.vendedor_santri||'').split(' ')[0])}</td>
      <td>${dBR(p.data_fechamento)}</td><td class="${d>60&&p.local_mercadoria!=='Entregue'?'atras':''}">${d??''}</td><td>${esc(p.local_mercadoria)}</td><td>${dBR(p.data_cliente_precisa)}</td>
-     <td class="${!p.previsao_entrega&&p.local_mercadoria!=='Entregue'?'atras':''}">${p.previsao_entrega?dBR(p.previsao_entrega):'—'}</td><td class="${gv?'atras':''}">${dBR(p.guarda_ate)}${gv?' (vencida)':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td></tr>`}).join('')||'<tr><td colspan="10" class="mut">Nenhum pedido.</td></tr>'}</table></div>
-   <p class="mut">"Dias" = dias desde o fechamento. Em vermelho: mais de 60 dias sem entregar, sem previsão de entrega ou guarda vencida. Clique para abrir a capa.</p></div>`;
+     <td class="${!p.previsao_entrega&&p.local_mercadoria!=='Entregue'?'atras':''}">${p.previsao_entrega?dBR(p.previsao_entrega):'—'}</td><td class="${gv?'atras':''}">${dBR(p.guarda_ate)}${gv?' (vencida)':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td><td>${selosSantri(SAN[p.numero_santri])}</td></tr>`}).join('')||'<tr><td colspan="11" class="mut">Nenhum pedido.</td></tr>'}</table></div>
+   <p class="mut">"Dias" = dias desde o fechamento. Em vermelho: mais de 60 dias sem entregar, sem previsão de entrega ou guarda vencida. Clique para abrir a capa. "No Santri": pagamento pelas baixas a receber e entrega pelo gerenciamento de entregas importados na Importadora.</p></div>`;
   $('#pdLoja').value=PDF_.loja; $('#pdLoja').onchange=e=>{PDF_.loja=+e.target.value;telaPedidos();};
   $('#pdLocal').value=PDF_.local; $('#pdLocal').onchange=e=>{PDF_.local=e.target.value;telaPedidos();};
   document.querySelectorAll('[data-loc]').forEach(k=>k.onclick=()=>{PDF_.local=k.dataset.loc;telaPedidos();});
@@ -1916,6 +1927,258 @@ async function telaUsuarios(){
   <p class="mut">"Nome no Santri" liga as vendas importadas do Santri ao usuário (painel, ranking e pendências de pedido).</p>`;
   ligarCampos($('#conteudo'));
 }
+
+// ================= TELAS DA JORNADA (16/10/2026): Direção, Orçamentos, Recebimentos, Chegada, Entregas, Estoque, Financeiro =================
+// Dados dos relatórios do Santri importados na Importadora. Cada tela chama uma RPC (security definer) que checa papel e loja.
+const J={mes:{}, aba:{}, busca:{}, ano:null, listas:{}};
+const veOrcamentosJ=()=>ehDirecao()||['gerente','vendedor'].includes(EU?.papel);
+const veRecebimentosJ=()=>ehDirecao()||['gerente','financeiro'].includes(EU?.papel);
+const veFinanceiroJ=()=>ehDirecao()||EU?.papel==='financeiro';
+const lojaJ=()=>LOJA_VER||(veDuasLojas()?0:(EU.loja_id||0));
+const lojaCodJ=id=>LOJAS.find(l=>l.id===id)?.codigo||'';
+const brl0=v=>(Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+const nfJ=v=>v==null||v===''?'':Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
+const pctJ=(a,b)=>b?Math.round(100*a/b)+'%':'—';
+const dataHoraJ=t=>t?new Date(t).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+const MESES_J=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const hojeLocalJ=()=>{const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);};
+function kpiJ(v,r,alerta,link){return `<div class="kpi"${link?` style="cursor:pointer" onclick="location.hash='${link}'"`:''}><b class="${alerta?'atras':''}">${v}</b><span>${r}</span></div>`;}
+function cabJ(titulo,extra=''){return `<div class="linha" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:4px 0;color:var(--navy)">${titulo}</h2><div class="linha">${extra}</div></div>`;}
+function mesNavJ(chave){ const m=J.mes[chave]||(J.mes[chave]=hojeLocalJ().slice(0,7)+'-01'); const d=new Date(m+'T12:00:00');
+  return `<button class="sec" data-mesj="${chave}" data-d="-1">‹</button><b style="min-width:130px;text-align:center">${MESES_J[d.getMonth()]} ${d.getFullYear()}</b><button class="sec" data-mesj="${chave}" data-d="1">›</button>`; }
+function ligarMesJ(fn){ document.querySelectorAll('[data-mesj]').forEach(b=>b.onclick=()=>{const k=b.dataset.mesj; const d=new Date(J.mes[k]+'T12:00:00'); d.setMonth(d.getMonth()+ +b.dataset.d); J.mes[k]=d.toISOString().slice(0,7)+'-01'; fn();}); }
+function abasJ(chave,lista,fn){ const at=J.aba[chave]||(J.aba[chave]=lista[0][0]);
+  setTimeout(()=>document.querySelectorAll(`[data-abaj="${chave}"]`).forEach(a=>a.onclick=()=>{J.aba[chave]=a.dataset.k;fn();}),0);
+  return `<div class="tabs">${lista.map(([k,t])=>`<a href="javascript:void 0" data-abaj="${chave}" data-k="${k}" class="${at===k?'on':''}">${t}</a>`).join('')}</div>`; }
+// lista com busca e planilha: cols = [[título, f(row)→html, {r:true (direita), csv:f(row)→texto}]]
+function listaJ(id,cols,rows,{vazio='Nada nesta lista.',nota='',max=500}={}){
+  J.listas[id]={cols,rows};
+  const b=(J.busca[id]||'').trim().toUpperCase();
+  const txt=r=>Object.values(r).map(v=>v==null?'':String(v)).join(' ').toUpperCase();
+  const vis=b?rows.filter(r=>txt(r).includes(b)):rows;
+  setTimeout(()=>{ const i=document.getElementById('bj_'+id); if(i){ let t; i.oninput=e=>{clearTimeout(t);t=setTimeout(()=>{J.busca[id]=e.target.value; const el=document.getElementById('lj_'+id); if(el){ el.outerHTML=listaJ(id,cols,rows,{vazio,nota,max}); const n=document.getElementById('bj_'+id); n.focus(); n.setSelectionRange(n.value.length,n.value.length);} },300);}; }
+    const c=document.getElementById('cj_'+id); if(c) c.onclick=()=>csvJ(id); },0);
+  return `<div class="card" id="lj_${id}"><div class="linha" style="justify-content:space-between"><input id="bj_${id}" value="${esc(J.busca[id]||'')}" placeholder="Buscar…" style="max-width:340px"><span class="mut">${vis.length.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')}</span><button class="sec" id="cj_${id}">Baixar planilha</button></div>
+    <div class="tbl" style="margin-top:8px"><table><tr>${cols.map(c=>`<th${c[2]?.r?' style="text-align:right"':''}>${c[0]}</th>`).join('')}</tr>
+    ${vis.slice(0,max).map(r=>`<tr>${cols.map(c=>`<td${c[2]?.r?' style="text-align:right;white-space:nowrap"':''}>${c[1](r)??''}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}" class="mut">${vazio}</td></tr>`}</table></div>
+    ${vis.length>max?`<p class="mut">Mostrando ${max} de ${vis.length}. Use a busca ou baixe a planilha para ver tudo.</p>`:''}${nota?`<p class="mut">${nota}</p>`:''}</div>`;
+}
+function csvJ(id){ const {cols,rows}=J.listas[id]; const b=(J.busca[id]||'').trim().toUpperCase();
+  const vis=b?rows.filter(r=>Object.values(r).map(v=>v==null?'':String(v)).join(' ').toUpperCase().includes(b)):rows;
+  const limpa=h=>String(h??'').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/;/g,',').trim();
+  const csv=[cols.map(c=>limpa(c[0])).join(';')].concat(vis.map(r=>cols.map(c=>c[2]?.csv?limpa(c[2].csv(r)):limpa(c[1](r))).join(';'))).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`${id}_${hojeLocalJ()}.csv`; a.click(); }
+const nCsv=v=>v==null?'':String(Number(v).toFixed(2)).replace('.',',');
+async function rpcJ(nome,args){ const {data,error}=await sb.rpc(nome,args); if(error) throw error; return data; }
+function erroTelaJ(titulo,e){ $('#conteudo').innerHTML=cabJ(titulo)+`<div class="erro">Não consegui carregar: ${esc(e.message||e)}</div>`; }
+const lojaSufixo=()=>{const l=lojaJ(); return l?' · '+esc(lojaCodJ(l)):' · PVA + RV';};
+const semDadosJ=(rel)=>`<div class="aviso">Ainda não há dados de <b>${rel}</b>. Importe o relatório na <a href="importadora.html">Importadora</a>.</div>`;
+const fonteJ=(t,rel)=>`<span class="mut">${rel}: ${t?dataHoraJ(t):'nunca importado'}</span>`;
+const pillJ=(t,cor)=>`<span class="pill" style="background:${cor};white-space:nowrap">${esc(t)}</span>`;
+
+// ---------- DIREÇÃO ----------
+async function telaDirecao(){
+  if(!ehDirecao()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Direção')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('painel_direcao',{p_loja:lojaJ(),p_mes:J.mes.dir||hojeLocalJ().slice(0,7)+'-01'}); }catch(e){ return erroTelaJ('Direção',e); }
+  const c=d.comercial, o=d.orcamentos, r=d.recebimento, cp=d.compras, ch=d.chegada, en=d.entrega, es=d.estoque, fi=d.financeiro, at=d.atendimento;
+  const ini=new Date(d.mes+'T12:00:00'), hj=new Date(hojeLocalJ()+'T12:00:00'), fimM=new Date(ini.getFullYear(),ini.getMonth()+1,0);
+  const corrente=hj>=ini&&hj<=fimM, frac=corrente?hj.getDate()/fimM.getDate():1;
+  const mcPct=c.faturamento?c.mc/c.faturamento:0, peRitmo=c.pe?c.pe*frac:null;
+  const dreMes=(fi.dre||[]).find(x=>x.mes===ini.getMonth()+1), dreUlt=(fi.dre||[]).filter(x=>x.mes<=ini.getMonth()+1&&(x.mes<ini.getMonth()+1||!corrente)).slice(-1)[0];
+  const rel=Object.fromEntries((d.relatorios||[]).map(x=>[x.tipo,x]));
+  const etapa=(n,titulo,link,principal,linhas,alerta,fonte)=>`<div class="card" style="border-left:5px solid ${alerta?'var(--quente)':'var(--ok)'};cursor:pointer;margin:0" onclick="location.hash='${link}'">
+     <div class="mut" style="font-size:11px">${n}. ${titulo}</div><div style="font-size:20px;font-weight:bold;color:var(--navy);margin:4px 0">${principal}</div>
+     ${linhas.map(l=>`<div style="font-size:13px">${l}</div>`).join('')}${fonte?`<div class="mut" style="font-size:11px;margin-top:6px">${fonte}</div>`:''}</div>`;
+  const fr=t=>t?'dados de '+dataHoraJ(t):'sem dados';
+  const cards=[
+    etapa(1,'Atendimento','#/painel',`${at.capas_novas} capas novas`,[`${at.contatos} contatos no mês`,`${at.capas_abertas} capas em andamento`],false,'sistema interno'),
+    etapa(2,'Orçamentos','#/orcamentos',brl0(o.abertos_valor),[`${nfJ(o.abertos)} abertos`,`<span class="${o.abertos_30?'atras':''}">${nfJ(o.abertos_30)} há mais de 30 dias · ${brl0(o.abertos_30_valor)}</span>`,`${nfJ(o.cancelados)} cancelados · só ${o.vendedores_que_cancelam} vendedor(es) cancelam`],o.abertos_30>0,fr(rel.orcamentos?.ultima_em)),
+    etapa(3,'Venda','#/painel',brl0(c.faturamento),[`MC ${brl0(c.mc)} (${(mcPct*100).toFixed(1)}%)`,c.pe?`<span class="${peRitmo&&c.mc<peRitmo?'atras':''}">ponto de equilíbrio ${brl0(c.pe)}${corrente?` · no ritmo: ${brl0(peRitmo)}`:''}</span>`:'ponto de equilíbrio não definido',c.meta_fat?`meta ${brl0(c.meta_fat)} (${pctJ(c.faturamento,c.meta_fat)})`:'<span class="mut">meta do mês não preenchida</span>',`${c.pedidos} pedidos · ${c.parciais} sem capa do pedido (margem parcial)`],!!(peRitmo&&c.mc<peRitmo),fr(rel.vendas?.ultima_em)),
+    etapa(4,'Pagamento do cliente','#/recebimentos',`${pctJ(r.pagas,r.vendas)} pagas`,[`${r.vendas} vendas do mês · ${brl0(r.recebido)} recebidos de ${brl0(r.valor)}`,`${r.parciais} parciais · ${r.sem_pagamento} sem pagamento`,`<span class="${r.sem_pagamento_7d_ano?'atras':''}">${r.sem_pagamento_7d_ano} vendas do ano sem nenhum pagamento há +7 dias · ${brl0(r.sem_pagamento_7d_ano_valor)}</span>`],r.sem_pagamento_7d_ano>0,fr(rel.receber_baixas?.ultima_em)),
+    etapa(5,'Compra','#/compras',`${cp.abertas} em aberto`,[`${brl0(cp.pendente)} pendentes`,`<span class="${cp.paradas_60?'atras':''}">${cp.paradas_60} paradas há +60 dias · ${brl0(cp.paradas_60_valor)}</span>`,`${cp.no_mes} compras no mês · ${brl0(cp.no_mes_valor)}`],cp.paradas_60>0,fr(rel.compras?.ultima_em)),
+    etapa(6,'Chegada da mercadoria','#/chegada',`${ch.abertas} notas aguardando`,[`<span class="${ch.abertas_15?'atras':''}">${ch.abertas_15} há mais de 15 dias · ${brl0(ch.abertas_15_valor)}</span>`,`${ch.notas_mes} notas de revenda baixadas no mês · frete ${brl0(ch.frete_mes)}`,`<span class="${ch.revest_sem_cte_90?'atras':''}">${ch.revest_sem_cte_90} de revestimento sem CT-e (90 dias)</span>`],ch.abertas_15>0||ch.revest_sem_cte_90>0,fr(rel.entradas?.ultima_em)),
+    etapa(7,'Entrega','#/entregas',`${nfJ(en.aguardando)} aguardando carregamento`,[`${brl0(en.aguardando_valor)}`,`<span class="${en.aguardando_30?'atras':''}">${nfJ(en.aguardando_30)} há mais de 30 dias · ${brl0(en.aguardando_30_valor)}</span>`,`<span class="${en.pendentes_vencidas?'atras':''}">${en.pendentes} pendentes (${en.pendentes_vencidas} com previsão vencida) · ${en.sem_agendamento} sem agendamento</span>`],en.aguardando_30>0||en.pendentes_vencidas>0,fr(en.foto_em)),
+    etapa(8,'Estoque','#/estoque',brl0(es.valor_sem_suspeitos),[Object.entries(es.por_local||{}).map(([l,v])=>`${esc(l.replace('DEPOSITO','Dep.'))} ${brl0(v)}`).join(' · '),`${es.sem_custo} produtos sem custo`,(es.suspeitos||[]).length?`<span class="atras">${es.suspeitos.length} com custo errado (ex.: ${esc(es.suspeitos[0].nome)})</span>`:'sem custo suspeito'],(es.suspeitos||[]).length>0,es.foto_em?'foto de '+dBR(es.foto_em):'sem dados'),
+    etapa(9,'Resultado e caixa','#/financeiro',dreUlt?`${brl0(dreUlt.resultado)}`:'—',[dreUlt?`resultado da DRE de ${MESES_J[dreUlt.mes-1]} · MC ${brl0(dreUlt.mc)}`:'DRE não importada',`a pagar ${brl0(fi.pagar_aberto)} · <span class="${fi.pagar_vencido?'atras':''}">vencido ${brl0(fi.pagar_vencido)}</span>`,`antecipado à fábrica ${brl0(fi.antecipado)} (${brl0(fi.antecipado_90)} há +90 dias)`,`<span class="${fi.sem_plano?'atras':''}">${fi.sem_plano} títulos sem plano financeiro · ${brl0(fi.sem_plano_valor)}</span>`],(dreUlt&&dreUlt.resultado<0)||fi.pagar_vencido>0||fi.sem_plano>0,fr(fi.foto_em)),
+  ];
+  // alertas em ordem de valor
+  const al=[];
+  if(o.abertos_30) al.push([o.abertos_30_valor,`${nfJ(o.abertos_30)} orçamentos abertos há mais de 30 dias (${brl0(o.abertos_30_valor)}) — cancelar com motivo ou retomar contato`,'#/orcamentos']);
+  if(r.sem_pagamento_7d_ano) al.push([r.sem_pagamento_7d_ano_valor,`${r.sem_pagamento_7d_ano} vendas de ${ini.getFullYear()} sem nenhum pagamento registrado há mais de 7 dias (${brl0(r.sem_pagamento_7d_ano_valor)})`,'#/recebimentos']);
+  if(en.aguardando_30) al.push([en.aguardando_30_valor,`${nfJ(en.aguardando_30)} entregas aguardando carregamento há mais de 30 dias (${brl0(en.aguardando_30_valor)}) — entregar ou baixar o manifesto`,'#/entregas']);
+  if(cp.paradas_60) al.push([cp.paradas_60_valor,`${cp.paradas_60} compras abertas há mais de 60 dias sem nota em entrada (${brl0(cp.paradas_60_valor)})`,'#/compras']);
+  if(fi.antecipado_90) al.push([fi.antecipado_90,`${brl0(fi.antecipado_90)} pagos antecipado à fábrica há mais de 90 dias sem a nota baixar o título`,'#/financeiro']);
+  if(fi.pagar_vencido) al.push([fi.pagar_vencido,`${brl0(fi.pagar_vencido)} em contas a pagar vencidas e não baixadas no Santri`,'#/financeiro']);
+  if(fi.sem_plano) al.push([fi.sem_plano_valor,`${fi.sem_plano} títulos a pagar "SEM PLANO" (${brl0(fi.sem_plano_valor)}) — ficam fora da DRE`,'#/financeiro']);
+  if(ch.abertas_15) al.push([ch.abertas_15_valor,`${ch.abertas_15} notas de entrada abertas há mais de 15 dias (${brl0(ch.abertas_15_valor)}) — mercadoria parada na transportadora ou falta baixar`,'#/chegada']);
+  (es.suspeitos||[]).forEach(s=>al.push([1e6,`Custo errado no Santri: ${esc(s.nome)} com custo ${brl(s.custo)} — distorce o valor do estoque`,'#/estoque']));
+  const semIcms=(fi.dre||[]).filter(x=>x.receita>0&&!Number(x.icms)&&x.mes<=ini.getMonth()+1);
+  if(semIcms.length&&lojaJ()===2) al.push([5e5,`DRE sem ICMS sobre vendas em ${semIcms.map(x=>MESES_J[x.mes-1]).join(', ')} — o imposto vem dos títulos lançados no financeiro`,'#/financeiro']);
+  (d.relatorios||[]).filter(x=>x.atrasado).forEach(x=>al.push([2e6,`Relatório do Santri atrasado: ${esc(x.nome)}${x.ultima_em?` (última importação ${dataHoraJ(x.ultima_em)})`:''}`,'importadora.html']));
+  al.sort((a,b)=>b[0]-a[0]);
+  $('#conteudo').innerHTML=cabJ('Direção · como está a empresa'+lojaSufixo(),mesNavJ('dir'))+
+    `<p class="mut">A jornada do cliente, etapa por etapa. Vermelho = passou do limite. Clique numa etapa para abrir a tela do setor. Mês: venda, pagamento e DRE; o resto é a situação de hoje.</p>
+     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:12px">${cards.join('')}</div>
+     <div class="card"><h3>O que precisa de atenção (${al.length})</h3>${al.length?`<ol style="margin:0;padding-left:20px;line-height:1.7">${al.map(a=>`<li><a href="${a[2].startsWith('#')?a[2]:a[2]}" style="color:var(--txt)">${a[1]}</a></li>`).join('')}</ol>`:'<p class="mut">Nada passou do limite.</p>'}</div>
+     <div class="card"><h3>DRE do Santri por mês${lojaSufixo()}</h3><div class="tbl"><table><tr><th>Mês</th><th style="text-align:right">Receita bruta</th><th style="text-align:right">Margem de contribuição</th><th style="text-align:right">MC %</th><th style="text-align:right">Resultado líquido</th><th style="text-align:right">ICMS sobre vendas</th></tr>
+       ${(fi.dre||[]).map(x=>`<tr><td>${MESES_J[x.mes-1]}</td><td style="text-align:right">${brl0(x.receita)}</td><td style="text-align:right">${brl0(x.mc)}</td><td style="text-align:right">${x.receita?(100*x.mc/x.receita).toFixed(1)+'%':''}</td><td style="text-align:right" class="${x.resultado<0?'atras':''}">${brl0(x.resultado)}</td><td style="text-align:right" class="${!Number(x.icms)?'atras':''}">${brl0(x.icms)}</td></tr>`).join('')||'<tr><td colspan="6" class="mut">DRE não importada.</td></tr>'}</table></div>
+       <p class="mut">A DRE é a do Santri (competência). Os impostos dela vêm dos títulos lançados no financeiro, não da venda — mês sem ICMS fica com margem alta. A MC do Painel comercial calcula o imposto sobre a venda.</p></div>
+     <div class="card"><h3>Relatórios do Santri</h3><div class="tbl"><table><tr><th>Relatório</th><th>Última importação</th><th></th></tr>${(d.relatorios||[]).map(x=>`<tr><td>${esc(x.nome)}</td><td>${x.ultima_em?dataHoraJ(x.ultima_em):'—'}</td><td>${x.atrasado?pillJ('atrasado','var(--quente)'):pillJ('em dia','var(--ok)')}</td></tr>`).join('')}</table></div></div>`;
+  ligarMesJ(telaDirecao);
+}
+
+// ---------- ORÇAMENTOS ----------
+async function telaOrcamentosJ(){
+  if(!veOrcamentosJ()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Orçamentos')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('tela_orcamentos',{p_loja:lojaJ()}); }catch(e){ return erroTelaJ('Orçamentos',e); }
+  const r=d.resumo, tot=(r.abertos||0)+(r.cancelados||0)+(r.vendidos||0);
+  const ida=d.idade||[], max=Math.max(1,...ida.map(x=>x.valor||0));
+  const vend=(d.vendedores||[]).map(v=>({...v,conv:(v.vendidos||0)/Math.max(1,(v.vendidos||0)+(v.abertos||0)+(v.cancelados||0))}));
+  const ab=J.aba.orc||'abertos';
+  const corpo=ab==='vendedores'?listaJ('orc_vendedores',[['Vendedor',v=>esc(v.nome)],['Loja',v=>esc(lojaCodJ(v.loja_id))],['Abertos',v=>nfJ(v.abertos),{r:1}],['Valor aberto',v=>brl0(v.abertos_valor),{r:1,csv:v=>nCsv(v.abertos_valor)}],
+      ['+30 dias',v=>`<span class="${v.a30?'atras':''}">${nfJ(v.a30)}</span>`,{r:1,csv:v=>v.a30}],['+90 dias',v=>nfJ(v.a90),{r:1}],['Cancelados',v=>nfJ(v.cancelados),{r:1}],['Vendidos',v=>nfJ(v.vendidos),{r:1}],['Valor vendido',v=>brl0(v.vendidos_valor),{r:1,csv:v=>nCsv(v.vendidos_valor)}],
+      ['Conversão',v=>Math.round(v.conv*100)+'%',{r:1}]],vend,{nota:'Conversão = vendidos ÷ (vendidos + abertos + cancelados), contando os números de orçamento a partir de '+(d.desde_numero||'—')+' (primeiro orçamento de 2026 no arquivo). Vendedor que nunca cancela fica com muitos "abertos" que na prática já foram perdidos.'})
+    :ab==='cancelados'?listaJ('orc_cancelados',[['Orçamento',x=>`<b>${esc(x.numero)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.numero}],['Data (aprox.)',x=>dBR(x.data)],['Vendedor',x=>esc(x.vendedor)],['Cliente',x=>esc(x.cliente)],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}]],d.cancelados_lista||[],{nota:'O Santri não guarda o motivo nem a data do cancelamento. Só aparecem os cancelados no Santri (hoje só duas vendedoras cancelam).'})
+    :ab==='marcas'?listaJ('orc_marcas',[['Marca',x=>esc(x.marca)],['Orçamentos',x=>nfJ(x.qtd),{r:1}],['Valor em aberto',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}]],d.marcas||[])
+    :listaJ('orc_abertos',[['Orçamento',x=>`<b>${esc(x.numero)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.numero}],['Data (aprox.)',x=>dBR(x.data)],['Dias',x=>`<span class="${x.dias>30?'atras':''}">${x.dias??''}</span>`,{r:1,csv:x=>x.dias}],['Vendedor',x=>esc(x.vendedor)],['Cliente',x=>esc(x.cliente)],['Telefone',x=>esc(x.telefone||'')],['Itens',x=>x.itens,{r:1}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Capa',x=>x.capa_id?`<a href="#/capa/${x.capa_id}">abrir</a>`:'<span class="mut">sem capa</span>',{csv:x=>x.capa_id?'sim':'não'}]],d.abertos||[],{nota:'Os 400 maiores orçamentos abertos. "Data (aprox.)": o relatório do Santri não traz a data do orçamento; o sistema estima pela numeração. Orçamento perdido deve ser cancelado no Santri com o motivo.'});
+  $('#conteudo').innerHTML=cabJ('Orçamentos'+lojaSufixo(),fonteJ(r.atualizado,'Orçamentos do Santri'))+
+    (!tot?semDadosJ('orçamentos (abertos e cancelados)'):'')+
+    `<div class="kpis" style="margin-bottom:12px">${kpiJ(nfJ(r.abertos),'abertos · '+brl0(r.abertos_valor))}${kpiJ(nfJ((ida.find(x=>x.faixa==='mais de 180 dias')||{}).qtd||0),'abertos há mais de 180 dias',((ida.find(x=>x.faixa==='mais de 180 dias')||{}).qtd||0)>0)}
+      ${kpiJ(nfJ(r.cancelados),'cancelados · '+brl0(r.cancelados_valor))}${kpiJ(nfJ(r.vendidos),'viraram pedido · '+brl0(r.vendidos_valor))}${kpiJ(pctJ(r.vendidos,tot),'conversão (em quantidade)')}${kpiJ(pctJ(r.vendidos_valor,(r.vendidos_valor||0)+(r.abertos_valor||0)+(r.cancelados_valor||0)),'conversão (em valor)')}</div>
+     <div class="card"><h3>Idade dos orçamentos abertos</h3><div class="tbl"><table>${ida.map(x=>`<tr><td style="width:150px">${esc(x.faixa)}</td><td style="text-align:right;width:70px">${nfJ(x.qtd)}</td><td style="text-align:right;width:130px">${brl0(x.valor)}</td><td><div style="height:10px;border-radius:5px;background:${x.faixa==='até 30 dias'?'var(--ok)':'var(--morna)'};width:${Math.round(100*(x.valor||0)/max)}%"></div></td></tr>`).join('')}</table></div></div>`+
+    abasJ('orc',[['abertos','Maiores abertos'],['vendedores','Por vendedor'],['marcas','Por marca'],['cancelados','Cancelados']],telaOrcamentosJ)+corpo;
+}
+
+// ---------- RECEBIMENTOS ----------
+async function telaRecebimentosJ(){
+  if(!veRecebimentosJ()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Recebimentos')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('tela_recebimentos',{p_loja:lojaJ(),p_mes:J.mes.rec||hojeLocalJ().slice(0,7)+'-01'}); }catch(e){ return erroTelaJ('Recebimentos',e); }
+  const r=d.resumo, rc=d.receber||{}, cp=rc.composicao||{};
+  const st=v=>v.pago>=0.98*v.valor?pillJ('pago','var(--ok)'):v.pago>0?pillJ('parcial','var(--morna)'):pillJ('sem pagamento','var(--quente)');
+  const NC={clientes:'Clientes',credito_fornecedor:'Crédito com fornecedor (antecipado)',grupo_emprestimos:'Empresas do grupo / empréstimos',venda_direta:'Comissão de venda direta',outros:'Outros'};
+  const ab=J.aba.rec||'vendas';
+  const colsV=[['Pedido',v=>`<b>${esc(v.numero)}</b> <span class="mut">${esc(lojaCodJ(v.loja_id))}</span>`,{csv:v=>v.numero}],['Fechamento',v=>dBR(v.df)],['Vendedor',v=>esc(v.vendedor)],['Cliente',v=>esc(v.cliente)],['Valor',v=>brl0(v.valor),{r:1,csv:v=>nCsv(v.valor)}],['Recebido',v=>brl0(v.pago),{r:1,csv:v=>nCsv(v.pago)}],['A receber (títulos)',v=>v.aberto?brl0(v.aberto):'',{r:1,csv:v=>nCsv(v.aberto)}],['1º recebimento',v=>dBR(v.primeiro)],['Formas',v=>esc(v.formas||'')],['Situação',st,{csv:v=>v.pago>=0.98*v.valor?'pago':v.pago>0?'parcial':'sem pagamento'}]];
+  const corpo=ab==='sem'?listaJ('rec_sem',colsV,d.sem_pagamento_ano||[],{nota:'Vendas do ano (sem venda direta) fechadas há mais de 7 dias sem nenhuma baixa com o nº do pedido no Documento. Pode ser pagamento lançado sem o nº do pedido, cartão (CAR…-BAI…) ou cliente que não pagou — conferir antes de comprar a mercadoria.'})
+    :ab==='vencidos'?listaJ('rec_venc',[['Cliente',x=>esc(x.nome)],['Documento',x=>esc(x.documento)],['Pedido',x=>esc(x.pedido||'')],['Loja',x=>esc(lojaCodJ(x.loja))],['Tipo',x=>esc(x.tipo)],['Vencimento',x=>dBR(x.vencimento)],['Dias',x=>`<span class="atras">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}],['Telefone',x=>esc(x.telefone||'')]],rc.clientes_vencidos||[],{nota:'Títulos de clientes em aberto e vencidos (fora créditos com fornecedor, empréstimos e venda direta). Foto da última importação de contas a receber.'})
+    :ab==='formas'?`<div class="card"><h3>Recebido no mês por forma de pagamento</h3><div class="tbl"><table><tr><th>Forma</th><th style="text-align:right">Baixas</th><th style="text-align:right">Valor</th></tr>${(d.formas_mes||[]).map(x=>`<tr><td>${esc(x.forma)}</td><td style="text-align:right">${x.qtd}</td><td style="text-align:right">${brl0(x.valor)}</td></tr>`).join('')||'<tr><td colspan="3" class="mut">Nada no mês.</td></tr>'}</table></div>
+       <h3 style="margin-top:14px">Por tipo de baixa</h3><div class="tbl"><table>${(d.tipos_mes||[]).map(x=>`<tr><td>${esc(x.tipo)}</td><td style="text-align:right">${brl0(x.valor)}</td></tr>`).join('')}</table></div><p class="mut">Pela data de recebimento das baixas a receber do Santri (inclui recebimentos que não são de venda, como empréstimos e comissões).</p></div>`
+    :listaJ('rec_vendas',colsV,d.vendas_mes||[],{nota:'Vendas do mês (sem venda direta). "Recebido" = baixas a receber cujo Documento traz o nº do pedido (13152/1-3, CAR…-ORC13152/…). "A receber" = títulos ainda em aberto com o nº do pedido.'});
+  $('#conteudo').innerHTML=cabJ('Recebimentos do cliente'+lojaSufixo(),mesNavJ('rec')+fonteJ(r.baixas_em,' Baixas'))+
+    (!r.baixas_em?semDadosJ('baixas de contas a receber'):'')+
+    `<div class="kpis" style="margin-bottom:12px">${kpiJ(r.vendas,'vendas no mês · '+brl0(r.valor))}${kpiJ(pctJ(r.pagas,r.vendas),`pagas (${r.pagas}) · ${brl0(r.recebido)} recebidos`)}${kpiJ(r.parciais,'com pagamento parcial')}${kpiJ(r.sem_pagamento,'sem nenhum pagamento',r.sem_pagamento>0)}
+      ${kpiJ(brl0(r.a_receber_programado),'em títulos a vencer dessas vendas')}${kpiJ(r.dias_mediana==null?'—':Math.round(r.dias_mediana)+' dias','do fechamento ao 1º pagamento (mediana)')}</div>
+     <div class="card"><h3>Contas a receber em aberto (foto de ${rc.foto_em?dataHoraJ(rc.foto_em):'—'})</h3><div class="tbl"><table><tr><th>De quem</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>
+       ${Object.keys(NC).filter(k=>cp[k]).map(k=>`<tr><td>${NC[k]}</td><td style="text-align:right">${cp[k].qtd}</td><td style="text-align:right">${brl0(cp[k].saldo)}</td><td style="text-align:right" class="${cp[k].vencido>0&&k==='clientes'?'atras':''}">${brl0(cp[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a receber não importadas.</td></tr>'}</table></div>
+       <div class="kpis" style="margin-top:8px">${(rc.aging_clientes||[]).map(x=>kpiJ(brl0(x.valor),'clientes · '+x.faixa,x.faixa!=='a vencer'&&x.valor>0)).join('')}</div></div>`+
+    abasJ('rec',[['vendas','Vendas do mês'],['sem','Sem pagamento (ano)'],['vencidos','Clientes vencidos'],['formas','Recebido por forma']],telaRecebimentosJ)+corpo;
+  ligarMesJ(telaRecebimentosJ);
+}
+
+// ---------- CHEGADA DA MERCADORIA (notas de entrada) ----------
+async function telaChegadaJ(){
+  if(!veCompras()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Chegada da mercadoria')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('tela_chegada',{p_loja:lojaJ()}); }catch(e){ return erroTelaJ('Chegada da mercadoria',e); }
+  const r=d.resumo, ab=J.aba.che||'abertas';
+  const colsN=[['Nota',x=>`<b>${esc(x.nr_nota||'')}</b> <span class="mut">${esc(lojaCodJ(x.loja))} · entrada ${esc(x.entrada)}</span>`,{csv:x=>x.nr_nota}],['Fornecedor',x=>esc(x.fornecedor)],['Marcas',x=>esc(x.marcas||'')],['Emissão',x=>dBR(x.emissao)],['Nota chegou',x=>dBR(x.cadastro)],
+     ['Dias',x=>`<span class="${x.dias>15&&ab==='abertas'?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Compra',x=>esc(x.compras||'—')],['CT-e',x=>esc(x.cte||'—')],['Transportadora',x=>esc(x.transportadora||'')]];
+  const colsB=[...colsN.slice(0,5),['Mercadoria chegou',x=>dBR(x.entrada_em)],colsN[6],colsN[7],['Peso (kg)',x=>nfJ(x.peso),{r:1}],['Observação',x=>esc(x.observacao||'')]];
+  const corpo=ab==='cte'?listaJ('che_cte',colsB,d.revest_sem_cte||[],{nota:'Notas de revestimento (Portinari/Ceusa) baixadas nos últimos 180 dias sem CT-e: o frete fica fora do custo do produto. Lançar o CT-e e ligar às notas da carga.'})
+    :ab==='semcompra'?listaJ('che_semcompra',colsN,d.revest_sem_compra||[],{nota:'Notas de revestimento sem compra ligada (180 dias). Regra: revenda sem compra = compra para estoque (normal em argamassa). Em revestimento, se era pedido de cliente, ligar à compra certa; se era estoque, escrever ESTOQUE na observação.'})
+    :ab==='fornecedores'?listaJ('che_forn',[['Fornecedor',x=>esc(x.fornecedor)],['Loja',x=>esc(lojaCodJ(x.loja))],['Notas',x=>x.notas,{r:1}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Compra → nota (dias)',x=>x.compra_nf==null?'—':Math.round(x.compra_nf),{r:1}],['Nota → mercadoria (dias)',x=>x.nf_chegada==null?'—':Math.round(x.nf_chegada),{r:1}],['Com CT-e',x=>x.com_cte,{r:1}],['Frete % do valor',x=>x.frete_pct==null?'—':nfJ(x.frete_pct)+'%',{r:1}],['Frete R$/t',x=>x.frete_t==null?'—':brl0(x.frete_t),{r:1}]],d.fornecedores||[],{nota:'Notas de revenda baixadas nos últimos 180 dias (fornecedores com 3 ou mais notas). Medianas. "Compra → nota": da data da compra no Santri até a emissão da nota (em Rio Verde a compra costuma ser lançada quando a nota chega, então sai perto de zero). Frete só das notas com CT-e.'})
+       +listaJ('che_transp',[['Transportadora',x=>esc(x.transportadora)],['Loja',x=>esc(lojaCodJ(x.loja))],['Notas',x=>x.notas,{r:1}],['Frete pago',x=>brl0(x.frete),{r:1,csv:x=>nCsv(x.frete)}],['% do valor',x=>nfJ(x.frete_pct)+'%',{r:1}],['R$/t',x=>brl0(x.frete_t),{r:1}]],d.transportadoras||[])
+    :listaJ('che_abertas',colsN,d.abertas||[],{nota:'Notas cadastradas no Santri (XML importado) e ainda não baixadas: a nota chegou, a mercadoria ainda não (ou falta dar a baixa). Mais de 15 dias é alerta.'});
+  $('#conteudo').innerHTML=cabJ('Chegada da mercadoria'+lojaSufixo(),`<a href="#/compras" class="mut" style="margin-right:10px">← Compras</a>`+fonteJ(r.atualizado,'Entradas do Santri'))+
+    (!r.atualizado?semDadosJ('entradas (notas de entrada)'):'')+
+    `<div class="kpis" style="margin-bottom:12px">${kpiJ(r.abertas,'notas aguardando mercadoria · '+brl0(r.abertas_valor))}${kpiJ(r.abertas_15,'há mais de 15 dias',r.abertas_15>0)}${kpiJ(r.revest_sem_cte,'revestimento sem CT-e (180 dias)',r.revest_sem_cte>0)}${kpiJ(r.revest_sem_compra,'revestimento sem compra ligada (180 dias)',r.revest_sem_compra>0)}${kpiJ(r.sem_peso,'notas de revenda sem peso (180 dias)',r.sem_peso>0)}</div>`+
+    abasJ('che',[['abertas','Notas aguardando mercadoria'],['cte','Revestimento sem CT-e'],['semcompra','Revestimento sem compra'],['fornecedores','Prazo e frete por fornecedor']],telaChegadaJ)+corpo;
+}
+
+// ---------- ENTREGAS ----------
+async function telaEntregasJ(){
+  if(!veCompras()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Entregas')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('tela_entregas',{p_loja:lojaJ()}); }catch(e){ return erroTelaJ('Entregas',e); }
+  const r=d.resumo, ab=J.aba.ent||'aguardando', ida=d.idade||[], max=Math.max(1,...ida.map(x=>x.valor||0));
+  const corpo=ab==='pendentes'?listaJ('ent_pend',[['Pedido',x=>`<b>${esc(x.pedido)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.pedido}],['Situação',x=>x.secao==='pendente'?pillJ('pendente','var(--morna)'):pillJ('sem agendamento','#888'),{csv:x=>x.secao}],['Cliente',x=>esc(x.cliente)],['Telefone',x=>esc(x.telefone||'')],['Cadastro',x=>dBR(x.cadastro)],['Maior previsão',x=>dBR(x.previsao)],['Atraso (dias)',x=>x.atraso?`<span class="atras">${x.atraso}</span>`:'',{r:1,csv:x=>x.atraso}],['Itens',x=>x.itens,{r:1}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Pago',x=>x.pago_pct==null?'—':x.pago_pct+'%',{r:1}],['Vendedor',x=>esc(x.vendedor||'')]],d.pendentes||[],{nota:'Itens de pedidos que ainda não viraram entrega no Santri (pendentes de separação ou sem agendamento). Foto da última importação de entregas.'})
+    :ab==='locais'?`<div class="card"><h3>Aguardando carregamento por local</h3><div class="tbl"><table><tr><th>Loja</th><th>Local</th><th style="text-align:right">Entregas</th><th style="text-align:right">Valor</th><th style="text-align:right">Dias (mediana)</th></tr>${(d.por_local||[]).map(x=>`<tr><td>${esc(lojaCodJ(x.loja))}</td><td>${esc(x.local)}</td><td style="text-align:right">${x.qtd}</td><td style="text-align:right">${brl0(x.valor)}</td><td style="text-align:right">${Math.round(x.mediana||0)}</td></tr>`).join('')}</table></div></div>`
+    :listaJ('ent_ag',[['Pedido',x=>`<b>${esc(x.pedido)}</b> <span class="mut">${esc(lojaCodJ(x.loja))} · entrega ${esc(x.entrega)}</span>`,{csv:x=>x.pedido}],['Cliente',x=>esc(x.cliente)],['Telefone',x=>esc(x.telefone||'')],['Local',x=>esc(x.local||'')],['Gerada em',x=>dBR(x.cadastro)],['Dias',x=>`<span class="${x.dias>30?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Separação',x=>esc(x.separacao||'')],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Peso (kg)',x=>nfJ(x.peso),{r:1}],['Pago',x=>x.pago_pct==null?'—':x.pago_pct+'%',{r:1}],['Cidade',x=>esc(x.cidade||'')],['Vendedor',x=>esc(x.vendedor||'')]],d.aguardando||[],{nota:'Entregas geradas no Santri com o manifesto "Aguardando carregamento". O Santri não guarda a data em que o cliente recebeu: a entrega só sai daqui quando o manifesto é baixado. Muitas podem já ter sido entregues sem baixa (sobretudo em Primavera).'});
+  $('#conteudo').innerHTML=cabJ('Entregas'+lojaSufixo(),fonteJ(d.foto_em,'Entregas do Santri'))+
+    (!d.foto_em?semDadosJ('entregas'):'')+
+    `<div class="kpis" style="margin-bottom:12px">${kpiJ(nfJ(r.aguardando),'aguardando carregamento · '+brl0(r.aguardando_valor))}${kpiJ(nfJ(r.aguardando_30),'há mais de 30 dias · '+brl0(r.aguardando_30_valor),r.aguardando_30>0)}${kpiJ(Math.round(r.aguardando_mediana||0)+' dias','espera (mediana)')}
+      ${kpiJ(r.pagas_aguardando,'pagas e aguardando entrega · '+brl0(r.pagas_aguardando_valor))}${kpiJ(r.pendentes,'pendentes · '+brl0(r.pendentes_valor))}${kpiJ(r.pendentes_vencidas,'pendentes com previsão vencida',r.pendentes_vencidas>0)}${kpiJ(r.sem_agendamento,'sem agendamento · '+brl0(r.sem_agendamento_valor))}${kpiJ(nfJ(r.concluidas),'entregas concluídas (Entrega total)')}</div>
+     <div class="card"><h3>Há quanto tempo estão aguardando</h3><div class="tbl"><table>${ida.map(x=>`<tr><td style="width:150px">${esc(x.faixa)}</td><td style="text-align:right;width:70px">${nfJ(x.qtd)}</td><td style="text-align:right;width:130px">${brl0(x.valor)}</td><td><div style="height:10px;border-radius:5px;background:${x.faixa==='até 30 dias'?'var(--ok)':'var(--quente)'};width:${Math.round(100*(x.valor||0)/max)}%"></div></td></tr>`).join('')}</table></div></div>`+
+    abasJ('ent',[['aguardando','Aguardando carregamento'],['pendentes','Pendentes e sem agendamento'],['locais','Por local']],telaEntregasJ)+corpo;
+}
+
+// ---------- ESTOQUE ----------
+async function telaEstoqueJ(){
+  if(!veCompras()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Estoque')+'<p class="mut">Carregando…</p>';
+  let d; try{ d=await rpcJ('tela_estoque',{p_loja:lojaJ()}); }catch(e){ return erroTelaJ('Estoque',e); }
+  const r=d.resumo, ab=J.aba.est||'parados';
+  const foto=(d.fotos||[]).map(f=>`${esc(lojaCodJ(f.loja))} ${dBR(f.data)}`).join(' · ');
+  const corpo=ab==='marcas'?listaJ('est_marcas',[['Marca',x=>esc(x.marca)],['Produtos',x=>x.produtos,{r:1}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Sem entrada em 2026',x=>brl0(x.parado),{r:1,csv:x=>nCsv(x.parado)}],['% parado',x=>pctJ(x.parado,x.valor),{r:1}]],d.por_marca||[])
+    :ab==='locais'?`<div class="card"><h3>Por local</h3><div class="tbl"><table><tr><th>Loja</th><th>Local</th><th style="text-align:right">Produtos</th><th style="text-align:right">Valor</th></tr>${(d.por_local||[]).map(x=>`<tr><td>${esc(lojaCodJ(x.loja))}</td><td>${esc(x.local)}</td><td style="text-align:right">${x.produtos}</td><td style="text-align:right">${brl0(x.valor)}</td></tr>`).join('')}</table></div><p class="mut">Sem os produtos com custo errado. Depósitos 01/02/03 são fixos da loja; um deles já foi eliminado.</p></div>`
+    :ab==='semcusto'?listaJ('est_semcusto',[['Produto',x=>`<b>${esc(x.codigo)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.codigo}],['Nome',x=>esc(x.nome)],['Marca',x=>esc(x.marca||'')],['Quantidade',x=>nfJ(x.qtd)+' '+esc(x.unidade||''),{r:1,csv:x=>nCsv(x.qtd)}],['Onde',x=>esc(x.locais)],['Última entrada',x=>dBR(x.ultima_entrada)]],d.sem_custo_lista||[],{nota:'Produtos com saldo e sem custo da última entrada no Santri: ficam fora do valor do estoque.'})
+    :listaJ('est_parados',[['Produto',x=>`<b>${esc(x.codigo)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.codigo}],['Nome',x=>esc(x.nome)],['Marca',x=>esc(x.marca||'')],['Quantidade',x=>nfJ(x.qtd)+' '+esc(x.unidade||''),{r:1,csv:x=>nCsv(x.qtd)}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Onde',x=>esc(x.locais)],['Última entrada',x=>x.ultima_entrada?dBR(x.ultima_entrada):'antes de 2026'],['Última venda',x=>dBR(x.ult_venda)||'—']],d.parados||[],{nota:'Produtos com saldo e sem nenhuma nota de entrada baixada em 2026 (os 300 de maior valor). Candidatos a liquidar, devolver ou conferir o saldo. O estoque do Santri também tem saldo negativo (não aparece aqui).'});
+  $('#conteudo').innerHTML=cabJ('Estoque'+lojaSufixo(),`<span class="mut">Foto: ${foto||'—'}</span>`)+
+    (!(d.fotos||[]).length?semDadosJ('estoque por local'):'')+
+    ((d.suspeitos||[]).length?`<div class="erro"><b>Custo errado no Santri:</b> ${(d.suspeitos||[]).map(s=>`${esc(s.codigo)} ${esc(s.nome)} (${esc(lojaCodJ(s.loja_id))}) com custo ${brl(s.custo)} → ${brl0(s.valor)}`).join(' · ')}. Fica fora dos totais abaixo. Corrigir o custo da última entrada.</div>`:'')+
+    `<div class="kpis" style="margin-bottom:12px">${kpiJ(brl0(r.valor),'em estoque (custo da última entrada)')}${kpiJ(nfJ(r.produtos),'produtos com saldo')}${kpiJ(brl0(r.sem_entrada_2026_valor),`sem entrada em 2026 (${r.sem_entrada_2026} produtos) · ${pctJ(r.sem_entrada_2026_valor,r.valor)}`,r.sem_entrada_2026_valor>0.3*r.valor)}${kpiJ(brl0(r.entrada_180),'última entrada há mais de 180 dias (2026)')}${kpiJ(r.sem_custo,'produtos sem custo',r.sem_custo>0)}</div>`+
+    abasJ('est',[['parados','Parados (sem entrada em 2026)'],['marcas','Por marca'],['locais','Por local'],['semcusto','Sem custo']],telaEstoqueJ)+corpo;
+}
+
+// ---------- FINANCEIRO ----------
+async function telaFinanceiroJ(){
+  if(!veFinanceiroJ()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Financeiro')+'<p class="mut">Carregando…</p>';
+  const ano=J.ano||new Date(hojeLocalJ()+'T12:00:00').getFullYear();
+  let d; try{ d=await rpcJ('tela_financeiro',{p_loja:lojaJ(),p_ano:ano}); }catch(e){ return erroTelaJ('Financeiro',e); }
+  const ab=J.aba.fin||'dre', pc=d.pagar?.por_categoria||{}, rc=d.receber||{};
+  const NP={fornecedores:'Fornecedores e fretes',impostos:'Impostos',emprestimos:'Empréstimos e consórcios',despesas:'Despesas',antecipado:'Antecipado à fábrica (Pre) — já pago',credito:'Créditos (transferências, devoluções) — não é dívida'};
+  const NR={clientes:'Clientes',credito_fornecedor:'Crédito com fornecedor (antecipado)',grupo_emprestimos:'Empresas do grupo / empréstimos',venda_direta:'Comissão de venda direta',outros:'Outros'};
+  const meses=[...new Set((d.dre||[]).flatMap(l=>Object.keys(l.meses||{}).map(Number)))].sort((a,b)=>a-b).filter(m=>(d.dre||[]).some(l=>l.chave==='A'&&Number(l.meses?.[m]||0)!==0));
+  const DESTAQUE=['A','=receita liquida de vendas','=resultado bruto','=margem de contribuicao','=lucro operacional','=lucro liquido antes do ir/cssl','=resultado liquido'];
+  const mostrarDet=J.aba.finDet||false;
+  const dreRows=(d.dre||[]).filter(l=>mostrarDet||l.nivel!==2);
+  const corpoDRE=`<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">DRE ${ano}${lojaSufixo()}</h3><div class="linha"><button class="sec" id="finAnoM">‹ ${ano-1}</button><button class="sec" id="finAnoP">${ano+1} ›</button><label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="finDet" style="width:auto" ${mostrarDet?'checked':''}> contas detalhadas</label></div></div>
+    <div class="tbl" style="margin-top:8px"><table style="font-size:13px"><tr><th>Plano financeiro</th>${meses.map(m=>`<th style="text-align:right">${MESES_J[m-1].slice(0,3)}</th>`).join('')}<th style="text-align:right">Ano</th><th style="text-align:right">% receita</th></tr>
+    ${dreRows.map(l=>{const dest=DESTAQUE.includes(l.chave), rec=(d.dre||[]).find(x=>x.chave==='A'); return `<tr style="${dest?'font-weight:bold;background:#f5f7fa':''}"><td style="padding-left:${l.nivel===2?24:l.nivel===1?10:4}px;white-space:nowrap">${esc(l.descricao)}</td>${meses.map(m=>{const v=Number(l.meses?.[m]||0); return `<td style="text-align:right;white-space:nowrap" class="${dest&&v<0?'atras':''}">${v?brl0(v):''}</td>`;}).join('')}<td style="text-align:right;white-space:nowrap">${brl0(l.total)}</td><td style="text-align:right">${rec&&rec.total?(100*l.total/rec.total).toFixed(1)+'%':''}</td></tr>`;}).join('')||`<tr><td class="mut">DRE de ${ano} não importada.</td></tr>`}</table></div>
+    ${(d.meses_sem_icms||[]).length?`<div class="aviso">Meses com receita e sem ICMS sobre vendas: ${(d.meses_sem_icms||[]).map(x=>`${esc(lojaCodJ(x.loja))} ${MESES_J[x.mes-1]}`).join(', ')}. O imposto da DRE vem dos títulos lançados no financeiro; sem o lançamento, a margem do mês fica alta.</div>`:''}
+    <p class="mut">DRE do Santri (competência, analítico), importada em ${d.dre_em?dataHoraJ(d.dre_em):'—'}. Com "Ver loja: Ambas", soma as duas lojas.</p></div>`;
+  const corpo=ab==='pagar'?`<div class="card"><h3>Agenda de pagamentos (sem antecipados e créditos)</h3><div class="kpis">${(d.pagar?.agenda||[]).map(x=>kpiJ(brl0(x.valor),`${x.faixa} · ${x.qtd} títulos`,x.faixa.startsWith('vencido'))).join('')}</div></div>`
+       +listaJ('fin_prox',[['Vencimento',x=>dBR(x.vencimento)],['Fornecedor / credor',x=>esc(x.nome)],['Documento',x=>esc(x.documento||'')],['Plano',x=>esc(x.plano||'')],['Loja',x=>esc(lojaCodJ(x.loja))],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}]],d.pagar?.proximos||[],{nota:'Próximos 15 dias.'})
+       +listaJ('fin_venc',[['Vencimento',x=>dBR(x.vencimento)],['Dias',x=>`<span class="atras">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Fornecedor / credor',x=>esc(x.nome)],['Documento',x=>esc(x.documento||'')],['Plano',x=>esc(x.plano||'')],['Loja',x=>esc(lojaCodJ(x.loja))],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}]],d.pagar?.vencidos||[],{nota:'Vencidos e não baixados no Santri (os 150 maiores). Parte pode estar paga sem baixa.'})
+    :ab==='antecipados'?listaJ('fin_ant',[['Fornecedor',x=>esc(x.fornecedor)],['Loja',x=>esc(lojaCodJ(x.loja))],['Títulos',x=>x.qtd,{r:1}],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}],['Mais antigo',x=>dBR(x.mais_antigo)],['Há mais de 90 dias',x=>`<span class="${x.mais_90>0?'atras':''}">${brl0(x.mais_90)}</span>`,{r:1,csv:x=>nCsv(x.mais_90)}]],d.antecipados||[],{nota:'Tipo "Pre" em contas a pagar: pagamento antecipado à fábrica (Dexco) que fica aberto até a nota chegar. Já saiu do caixa — não é dívida. Antecipado antigo = mercadoria que não veio ou título que não foi baixado com a nota.'})
+       +listaJ('fin_credforn',[['Fornecedor',x=>esc(x.fornecedor)],['Loja',x=>esc(lojaCodJ(x.loja))],['Títulos',x=>x.qtd,{r:1}],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}],['Há mais de 90 dias',x=>brl0(x.mais_90),{r:1,csv:x=>nCsv(x.mais_90)}]],d.credito_fornecedor||[],{nota:'Créditos com fornecedor em contas a receber (pagamento "Crédito gerado" ainda não usado).'})
+    :ab==='creditos'?`<div class="card"><h3>Créditos em contas a pagar (tipo Cre)</h3><div class="tbl"><table><tr><th>Origem</th><th>Loja</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th></tr>${(d.creditos||[]).map(x=>`<tr><td>${esc(x.origem)}</td><td>${esc(lojaCodJ(x.loja))}</td><td style="text-align:right">${x.qtd}</td><td style="text-align:right">${brl0(x.saldo)}</td></tr>`).join('')}</table></div><p class="mut">Transferências entre lojas lançadas como crédito (TRANSF, com várias grafias), devoluções de cliente (DEV) e sobra de pedido (ORC). Precisa de um jeito único de lançar a transferência entre lojas.</p></div>`
+       +listaJ('fin_semplano',[['Nome',x=>esc(x.nome)],['Documento',x=>esc(x.documento||'')],['Tipo',x=>esc(x.tipo)],['Loja',x=>esc(lojaCodJ(x.loja))],['Vencimento',x=>dBR(x.vencimento)],['Saldo',x=>brl0(x.saldo),{r:1,csv:x=>nCsv(x.saldo)}]],d.sem_plano||[],{nota:'Títulos a pagar em aberto "SEM PLANO": ficam fora da DRE e do fluxo por categoria.'})
+    :corpoDRE;
+  $('#conteudo').innerHTML=cabJ('Financeiro'+lojaSufixo(),fonteJ(d.foto_em,'Contas a pagar/receber'))+
+    `<div class="g2"><div class="card"><h3>Contas a pagar em aberto</h3><div class="tbl"><table><tr><th>Categoria</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>${Object.keys(NP).filter(k=>pc[k]).map(k=>`<tr><td>${NP[k]}</td><td style="text-align:right">${pc[k].qtd}</td><td style="text-align:right">${brl0(pc[k].saldo)}</td><td style="text-align:right" class="${pc[k].vencido>0&&!['antecipado','credito'].includes(k)?'atras':''}">${brl0(pc[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a pagar não importadas.</td></tr>'}</table></div></div>
+      <div class="card"><h3>Contas a receber em aberto</h3><div class="tbl"><table><tr><th>De quem</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>${Object.keys(NR).filter(k=>rc[k]).map(k=>`<tr><td>${NR[k]}</td><td style="text-align:right">${rc[k].qtd}</td><td style="text-align:right">${brl0(rc[k].saldo)}</td><td style="text-align:right">${brl0(rc[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a receber não importadas.</td></tr>'}</table></div><p class="mut"><a href="#/recebimentos">Ver recebimentos dos clientes →</a></p></div></div>`+
+    abasJ('fin',[['dre','DRE'],['pagar','Agenda de pagamentos'],['antecipados','Antecipados à fábrica'],['creditos','Créditos e sem plano']],telaFinanceiroJ)+corpo;
+  if($('#finAnoM')){ $('#finAnoM').onclick=()=>{J.ano=ano-1;telaFinanceiroJ();}; $('#finAnoP').onclick=()=>{J.ano=ano+1;telaFinanceiroJ();}; $('#finDet').onchange=e=>{J.aba.finDet=e.target.checked;telaFinanceiroJ();}; }
+}
+
+// situação do Santri (pago / entregue) na lista de pedidos
+async function situacaoSantriPedidos(numeros){
+  if(!numeros.length) return {};
+  const {data,error}=await sb.rpc('situacao_santri_pedidos',{p_numeros:numeros}); if(error){ console.error(error); return {}; }
+  return data||{};
+}
+function selosSantri(s){
+  if(!s) return '<span class="mut">—</span>';
+  const p=s.valor?Math.round(100*Math.min(s.pago,s.valor)/s.valor):null;
+  const pg=p==null?'':p>=98?pillJ('pago','var(--ok)'):p>0?pillJ('pago '+p+'%','var(--morna)'):pillJ('sem pagamento','var(--quente)');
+  const en=!s.entregas?'':s.entregues===s.entregas?pillJ('entregue','var(--ok)'):s.aguardando?pillJ('aguardando carregamento','var(--fria)'):pillJ(`${s.entregues}/${s.entregas} entregues`,'var(--morna)');
+  return pg+' '+en;
+}
+
 </script>
 </body>
 </html>
