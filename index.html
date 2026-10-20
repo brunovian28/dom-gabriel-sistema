@@ -62,6 +62,20 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
 .erro{background:#fdecea;color:#b00;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
 #avisoRel{background:#fdecea;color:#b00;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 #avisoRel a{color:#b00;font-weight:bold}#avisoRel button{background:none;border:0;color:#b00;font-size:18px;cursor:pointer;padding:0 4px}
+.topoSetor{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:6px 0 12px}
+.ind,.etapa{background:#fff;border:1px solid var(--bd);border-left:4px solid var(--navy2);border-radius:10px;padding:10px 12px;cursor:pointer}
+.ind.alerta,.etapa.alerta{border-left-color:var(--quente)}.ind.ok{border-left-color:var(--ok)}.ind:hover,.etapa:hover{border-color:var(--navy2)}
+.ind .t,.etapa .t{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.ind .v,.etapa .v{font-size:23px;font-weight:bold;color:var(--navy);margin:3px 0 2px;white-space:nowrap}.ind .s,.etapa .s{font-size:12px;color:var(--mut);line-height:1.35}
+.fluxo{display:flex;gap:4px;align-items:stretch;flex-wrap:wrap}.fluxo .etapa{flex:1;min-width:190px}.fluxo .seta{align-self:center;color:var(--mut);font-size:22px}
+@media (max-width:800px){.fluxo .seta{display:none}}
+.cxM{border-radius:8px;padding:10px 12px;margin:10px 0;background:#eef3f9}.cxM b{display:block;font-size:17px;color:var(--navy)}.cxM span{font-size:13px;color:var(--mut)}
+.cxM.ok{background:#e8f5e9}.cxM.ok b{color:var(--ok)}.cxM.falta{background:#fdecea}.cxM.falta b{color:var(--quente)}
+.itFila{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--bd);font-size:13px}.itFila:last-child{border-bottom:0}
+.barra{height:7px;border-radius:4px;margin:2px 0}
+.abasSetor a{font-size:15px}
+#conteudo{min-width:0}
+@media (max-width:800px){.cxDet{display:none}}
 </style>
 </head>
 <body>
@@ -1362,7 +1376,10 @@ async function telaPedidos(){
 // ================= COMPRAS DO SANTRI (Relação de Compras – Analítico, importada na Importadora) =================
 const veCompras = () => ehDirecao() || ['gerente','compras','financeiro','logistica'].includes(EU?.papel);
 const anotaCompras = () => ehDirecao() || ['gerente','compras'].includes(EU?.papel);
-let CMP={ver:'paradas',busca:'',aberto:null};
+// Tela do setor (20/10/2026): no topo os números que norteiam compras; abaixo, na ordem do trabalho: Comprar, Acompanhar, Corrigir, Analisar.
+// Dados: RPC tela_compras (fila, prazo, trânsito, caixa) + compras_santri lidas direto (listas de compras abertas, paradas, sem venda).
+let CMP={aba:'comprar',busca:'',aberto:null};
+const SUBK_CMP={acomp:'cmpAcomp',corr:'cmpCorr',anal:'cmpAnal'};
 async function lerTudo(q){ const out=[]; for(let i=0;;i+=1000){ const {data,error}=await q().range(i,i+999); if(error) throw error; out.push(...data); if(data.length<1000) break; } return out; }
 function situacaoCompra(c){
   const it=(c.compras_santri_itens||[]).filter(i=>i.ativo!==false);
@@ -1370,85 +1387,218 @@ function situacaoCompra(c){
   if(c.status!=='Aberto') return c.status;
   return emEntrada?'Em entrada':alguma?'Entrada parcial':'Sem entrada';
 }
-async function telaCompras(){
-  if(!veCompras()) return telaLista();
-  const lj=LOJA_VER||(veDuasLojas()?0:EU.loja_id);
-  $('#conteudo').innerHTML='<h2 style="margin:4px 0;color:var(--navy)">Compras</h2><p class="mut">Carregando…</p>';
-  const h=hoje(), dias=d=>d?Math.floor((new Date(h)-new Date(d))/864e5):null;
-  const doze=new Date(new Date(h).getFullYear(),new Date(h).getMonth()-11,1).toISOString().slice(0,10);
-  let abertas, ano;
-  try{
-    [abertas, ano]=await Promise.all([
-      lerTudo(()=>{let q=sb.from('compras_santri').select('id,loja_id,numero,fornecedor_nome,status,comprador,data_cadastro,prev_entrega,valor_pedido,valor_pendencias,ped_venda_vinculado,nr_pedido_fornecedor,anotacao,anotacao_em,compras_santri_itens(ordem,codigo,nome,unidade,quantidade,em_entrada,entregues,saldo_pendente,preco,marca,ativo)').eq('status','Aberto').order('data_cadastro'); if(lj) q=q.eq('loja_id',lj); return q;}),
-      lerTudo(()=>{let q=sb.from('compras_santri').select('id,loja_id,numero,fornecedor_nome,status,comprador,data_cadastro,data_baixa,valor_pedido,ped_venda_vinculado,nr_pedido_fornecedor,anotacao').neq('status','Cancelado').gte('data_cadastro',doze).order('data_cadastro'); if(lj) q=q.eq('loja_id',lj); return q;})
-    ]);
-  }catch(e){ return erro(e); }
-  let ultima='';
-  if(ehDirecao()){ const {data:im}=await sb.from('importacoes').select('criado_em').eq('tipo','compras').eq('status','aplicada').order('id',{ascending:false}).limit(1); if(im&&im[0]) ultima=new Date(im[0].criado_em).toLocaleString('pt-BR'); }
-  abertas.forEach(c=>{c.sit=situacaoCompra(c); c.dias=dias(c.data_cadastro);});
-  const pend=l=>l.reduce((s,c)=>s+Number(c.valor_pendencias||0),0);
-  const paradasSem=abertas.filter(c=>c.dias>60&&c.sit==='Sem entrada'), paradasParc=abertas.filter(c=>c.dias>60&&c.sit==='Entrada parcial');
-  const emEntrada=abertas.filter(c=>c.sit==='Em entrada');
-  const semVenda=ano.filter(c=>!c.ped_venda_vinculado);
-  const ult90=ano.filter(c=>dias(c.data_cadastro)<=90), comNr=ult90.filter(c=>c.nr_pedido_fornecedor).length;
-  const pctNr=ult90.length?Math.round(comNr/ult90.length*100):0;
-  const VISOES=[['paradas',`Paradas há mais de 60 dias (${paradasSem.length+paradasParc.length})`],['abertas',`Todas em aberto (${abertas.length})`],['entrada',`Em entrada (${emEntrada.length})`],['semvenda',`Sem venda vinculada (${semVenda.length})`],['mes','Por mês e fornecedor']];
-  const lojaCod=id=>esc(LOJAS.find(l=>l.id===id)?.codigo||'');
-  const nome1=s=>esc(String(s||'').split(' ')[0]);
+const milCmp=v=>{const n=Number(v)||0, a=Math.abs(n); return a>=1e6?'R$ '+(n/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi':a>=1e4?'R$ '+Math.round(n/1e3).toLocaleString('pt-BR')+' mil':brl0(n);};
+const somaDiasCmp=(d,n)=>{const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10);};
+function indCmp(titulo,valor,sub,{alerta=false,ok=false,aba=null}={}){
+  return `<div class="ind${alerta?' alerta':ok?' ok':''}"${aba?` data-irc="${aba}"`:''}><div class="t">${titulo}</div><div class="v">${valor}</div><div class="s">${sub}</div></div>`;}
+function pedCliCmp(ps){ if(!ps||!ps.length) return '<span class="mut">—</span>';
+  const t={pendente:'pendente',sem_agendamento:'sem agendamento',gerada:'entrega gerada',entregue:'entregue',sem_info:'sem entrega no Santri'};
+  return ps.map(p=>`<div style="white-space:nowrap"><b>${esc(p.pedido)}</b> ${esc(String(p.cliente||'').split(' ').slice(0,2).join(' '))} <span class="mut">· ${t[p.situacao]||p.situacao}${p.previsao?' '+dBR(p.previsao).slice(0,5):''}</span></div>`).join(''); }
+function decisaoNFCmp(x,hj){
+  const ps=x.pedidos||[];
+  if(!ps.length) return ['Sem venda ligada (estoque?)','#888'];
+  if(ps.every(p=>p.situacao==='entregue')) return ['Entregue? Dar baixa na nota','var(--fria)'];
+  if(ps.some(p=>p.situacao==='gerada')) return ['Trazer: entrega gerada','var(--ok)'];
+  const prev=ps.filter(p=>p.situacao==='pendente'&&p.previsao).map(p=>p.previsao).sort();
+  if(prev.length){ const m=prev[0];
+    if(m<hj) return ['Previsão vencida ('+dBR(m).slice(0,5)+'): confirmar','var(--morna)'];
+    if(m<=somaDiasCmp(hj,10)) return ['Trazer: cliente espera '+dBR(m).slice(0,5),'var(--ok)'];
+    return ['Aguardar: previsão '+dBR(m).slice(0,5),'var(--morna)']; }
+  return ['Confirmar data com o cliente','var(--quente)'];
+}
+// Caixa para comprar: saldo informado + a receber − a pagar − fila de compra, semana a semana (30 dias)
+function blocoCaixaCmp(r){
+  const cx=r.caixa||[]; if(!r.financeiro||!cx.length) return '';
+  const soma=f=>cx.reduce((s,c)=>s+(Number(f(c))||0),0);
+  const CATS=[['fornecedores','fornecedores'],['despesas','despesas'],['impostos','impostos'],['emprestimos','empréstimos']];
+  const temSaldo=cx.every(c=>c.saldo), algumSaldo=cx.some(c=>c.saldo);
+  const saldo=soma(c=>c.saldo?.saldo||0), fila=soma(c=>c.fila_custo);
+  let acc=saldo, pior=null;
+  const sem=[0,1,2,3].map(k=>{ const s=cx[0].semanas[k];
+    const ent=soma(c=>c.semanas[k].receber), sai=CATS.reduce((t,[x])=>t+soma(c=>c.semanas[k][x]),0), comp=k===0?fila:0;
+    acc+=ent-sai-comp; if(pior===null||acc<pior.v) pior={v:acc,k};
+    return {k,ini:s.ini,fim:s.fim,ent,sai,comp,saldo:acc,det:CATS.map(([x,n])=>[n,soma(c=>c.semanas[k][x])]).filter(z=>z[1]>0)}; });
+  const fim=acc, venc=CATS.reduce((t,[x])=>t+soma(c=>c.vencidos[x]),0), vencRec=soma(c=>c.vencidos.receber);
+  const precisa=sem.reduce((t,s)=>t+s.sai+s.comp-s.ent,0);
+  const datas=cx.filter(c=>c.saldo).map(c=>`${esc(lojaCodJ(c.loja))} ${brl0(c.saldo.saldo)} em ${dBR(c.saldo.data)}`).join(' · ');
+  let manchete;
+  if(!temSaldo) manchete=`<div class="cxM"><b>Para pagar o que vence e comprar a fila em 30 dias, precisa de ${milCmp(precisa)}.</b><span>${algumSaldo?'Falta informar o saldo de uma das lojas':'Informe o saldo em conta para saber se dá'} — botão ao lado.</span></div>`;
+  else if(pior.v>=0) manchete=`<div class="cxM ok"><b>Dá para comprar: sobra ${milCmp(fim)} em 30 dias.</b><span>No ponto mais baixo (semana ${pior.k+1}) o saldo fica em ${milCmp(pior.v)}.</span></div>`;
+  else manchete=`<div class="cxM falta"><b>Falta ${milCmp(-pior.v)} ${fim<0?'até o fim dos 30 dias':'na semana '+(pior.k+1)}.</b><span>${fim>=0?'Depois se recupera e termina com '+milCmp(fim)+'.':'Termina o período com '+milCmp(fim)+'.'} Compre primeiro o que o cliente já pagou há mais tempo.</span></div>`;
+  return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">Caixa para comprar · próximos 30 dias</h3>
+      <div class="linha"><span class="mut">${datas?'Saldo informado: '+datas:'Saldo em conta ainda não informado'}</span><button class="sec" id="cxInformar">Informar saldo</button></div></div>
+    ${manchete}
+    <div class="tbl"><table><tr><th>Semana</th><th style="text-align:right">Entra (a receber)</th><th style="text-align:right">Sai (a pagar)</th><th style="text-align:right">Compras (fila)</th><th style="text-align:right">${temSaldo?'Saldo no fim':'Acumulado sem o saldo'}</th></tr>
+      <tr><td class="mut">Hoje</td><td></td><td></td><td></td><td style="text-align:right">${temSaldo?brl0(saldo):'—'}</td></tr>
+      ${sem.map(s=>`<tr><td>${dBR(s.ini).slice(0,5)} a ${dBR(s.fim).slice(0,5)}</td><td style="text-align:right">${brl0(s.ent)}</td>
+        <td style="text-align:right" title="${s.det.map(z=>z[0]+' '+brl0(z[1])).join(' · ')}">${brl0(s.sai)}${s.det.length?`<div class="mut cxDet" style="font-size:11px">${s.det.map(z=>z[0]+' '+milCmp(z[1])).join(' · ')}</div>`:''}</td>
+        <td style="text-align:right">${s.comp?brl0(s.comp):''}</td><td style="text-align:right" class="${s.saldo<0?'atras':''}"><b>${brl0(s.saldo)}</b></td></tr>`).join('')}</table></div>
+    <p class="mut">Fora da conta: <b>${milCmp(venc)} vencidos a pagar e não baixados</b> (${CATS.map(([x,n])=>n+' '+milCmp(soma(c=>c.vencidos[x]))).join(' · ')}) e ${milCmp(vencRec)} vencidos a receber de clientes. Se parte do vencido for paga agora, sai do mesmo caixa.
+    Vendas novas não entram: o cartão cai antecipado no dia da venda. Antecipado à Dexco ("Pre") e créditos já saíram do caixa. Contas a pagar/receber importadas em ${dataHoraJ(r.atualizado.titulos)}; se o filtro foi por emissão, parcelas de títulos emitidos antes de 2026 faltam aqui (exportar por vencimento).</p></div>`;
+}
+function modalSaldoCmp(r){
+  const cx=r.caixa||[];
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Saldo em conta hoje</h3><p class="mut">Some o saldo dos bancos da loja (o que está disponível hoje). Fica guardado com a data e quem informou.</p>
+    ${cx.map(c=>`<label>${esc(lojaCodJ(c.loja))}${c.saldo?` <span class="mut">· último: ${brl0(c.saldo.saldo)} em ${dBR(c.saldo.data)}</span>`:''}</label><input class="cxIn" data-l="${c.loja}" inputmode="decimal" placeholder="ex.: 125.000,00">`).join('')}
+    <label>Observação (opcional)</label><input id="cxObs" placeholder="ex.: Sicredi + BB">
+    <div class="linha" style="margin-top:12px"><button id="cxSalvar">Salvar</button><button class="sec" id="cxX">Cancelar</button></div></div></div>`;
+  $('#cxX').onclick=()=>$('#modal').innerHTML='';
+  $('#cxSalvar').onclick=async()=>{
+    const num=s=>{s=String(s||'').trim(); if(!s) return null; s=s.replace(/[R$\s]/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); const n=Number(s); return isFinite(n)?n:NaN;};
+    for(const i of document.querySelectorAll('.cxIn')){ const v=num(i.value); if(v===null) continue; if(isNaN(v)) return toast('Valor inválido: '+i.value);
+      const {error}=await sb.rpc('informar_saldo_caixa',{p_loja:+i.dataset.l,p_saldo:v,p_obs:$('#cxObs').value}); if(error) return erro(error); }
+    $('#modal').innerHTML=''; toast('Saldo salvo'); telaCompras(); };
+}
+// Lista das compras do Santri (mesma de antes): busca, planilha, anotação e itens ao clicar
+function listaCmp(lista,modo){
+  const lojaCod=id=>esc(LOJAS.find(l=>l.id===id)?.codigo||''), nome1=s=>esc(String(s||'').split(' ')[0]);
   const b=CMP.busca.trim().toUpperCase();
-  const filtra=l=>!b?l:l.filter(c=>(c.numero+' '+(c.fornecedor_nome||'')+' '+(c.comprador||'')+' '+(c.nr_pedido_fornecedor||'')+' '+(c.anotacao||'')).toUpperCase().includes(b)||(c.compras_santri_itens||[]).some(i=>(i.codigo+' '+i.nome).toUpperCase().includes(b)));
-  let lista=[];
-  if(CMP.ver==='paradas') lista=[...paradasSem,...paradasParc].sort((a,c)=>c.dias-a.dias);
-  else if(CMP.ver==='abertas') lista=[...abertas].sort((a,c)=>c.dias-a.dias);
-  else if(CMP.ver==='entrada') lista=emEntrada;
-  else if(CMP.ver==='semvenda') lista=[...semVenda].sort((a,c)=>Number(c.valor_pedido||0)-Number(a.valor_pedido||0));
-  lista=filtra(lista);
+  const vis=!b?lista:lista.filter(c=>(c.numero+' '+(c.fornecedor_nome||'')+' '+(c.comprador||'')+' '+(c.nr_pedido_fornecedor||'')+' '+(c.anotacao||'')).toUpperCase().includes(b)||(c.compras_santri_itens||[]).some(i=>(i.codigo+' '+i.nome).toUpperCase().includes(b)));
+  CMP.visiveis=vis;
   const corSit={'Sem entrada':'var(--quente)','Entrada parcial':'var(--morna)','Em entrada':'var(--fria)','Baixado':'var(--ok)'};
-  const linha=c=>{const d=c.dias??dias(c.data_cadastro), par=c.status==='Aberto'&&d>60&&c.sit!=='Em entrada';
+  const linha=c=>{const d=c.dias, par=c.status==='Aberto'&&d>60&&c.sit!=='Em entrada';
     return `<tr class="cmpL" data-id="${c.id}" style="cursor:pointer"><td><b>${esc(c.numero.replace(/\B(?=(\d{3})+(?!\d))/g,'.'))}</b> <span class="mut">${lojaCod(c.loja_id)}</span></td><td>${dBR(c.data_cadastro)}</td><td class="${par?'atras':''}">${d??''}</td>
       <td>${esc(c.fornecedor_nome||'')}</td><td>${nome1(c.comprador)}</td>
       <td><span class="pill" style="white-space:nowrap;background:${corSit[c.sit||c.status]||'#888'}">${esc(c.sit||c.status)}</span></td>
       <td style="text-align:right">${brl(c.status==='Aberto'?c.valor_pendencias:c.valor_pedido)}</td><td>${esc(c.nr_pedido_fornecedor||'—')}</td>
       <td onclick="event.stopPropagation()">${anotaCompras()?`<input class="cmpNota" data-id="${c.id}" value="${esc(c.anotacao||'')}" placeholder="anotar retorno…" style="min-width:180px;padding:5px">`:esc(c.anotacao||'')}</td></tr>
       <tr class="${CMP.aberto===c.id?'':'hide'}" data-det="${c.id}"><td colspan="9" style="background:#f8f9fb"><div class="mut">Carregando…</div></td></tr>`;};
-  let corpo='';
-  if(CMP.ver==='mes'){
-    const meses={}, forn={};
-    ano.forEach(c=>{const m=c.data_cadastro.slice(0,7); (meses[m]=meses[m]||{n:0,v:0,pva:0,rv:0}); meses[m].n++; meses[m].v+=Number(c.valor_pedido||0); meses[m][c.loja_id===1?'pva':'rv']+=Number(c.valor_pedido||0);
-      const f=c.fornecedor_nome||'?'; (forn[f]=forn[f]||{n:0,v:0,ab:0,nr:0}); forn[f].n++; forn[f].v+=Number(c.valor_pedido||0); if(c.status==='Aberto')forn[f].ab++; if(c.nr_pedido_fornecedor)forn[f].nr++;});
-    const nomeM=m=>['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][+m.slice(5,7)-1]+'/'+m.slice(0,4);
-    corpo=`<div class="card"><h3>Compras por mês (sem as canceladas)</h3><div class="tbl"><table><tr><th>Mês</th><th style="text-align:right">Compras</th>${lj?'':'<th style="text-align:right">PVA</th><th style="text-align:right">RV</th>'}<th style="text-align:right">Total</th></tr>
-      ${Object.keys(meses).sort().reverse().map(m=>`<tr><td>${nomeM(m)}</td><td style="text-align:right">${meses[m].n}</td>${lj?'':`<td style="text-align:right">${brl(meses[m].pva)}</td><td style="text-align:right">${brl(meses[m].rv)}</td>`}<td style="text-align:right"><b>${brl(meses[m].v)}</b></td></tr>`).join('')}</table></div></div>
-      <div class="card"><h3>Por fornecedor (últimos 12 meses)</h3><div class="tbl"><table><tr><th>Fornecedor (cadastro no Santri)</th><th style="text-align:right">Compras</th><th style="text-align:right">Valor</th><th style="text-align:right">Em aberto</th><th style="text-align:right">Com nº do pedido no fornecedor</th></tr>
-      ${Object.entries(forn).sort((a,c)=>c[1].v-a[1].v).map(([f,x])=>`<tr><td>${esc(f)}</td><td style="text-align:right">${x.n}</td><td style="text-align:right">${brl(x.v)}</td><td style="text-align:right">${x.ab}</td><td style="text-align:right">${Math.round(x.nr/x.n*100)}%</td></tr>`).join('')}</table></div>
-      <p class="mut">A mesma fábrica pode aparecer em mais de um cadastro (ex.: Dexco por centro de distribuição).</p></div>`;
-  } else {
-    corpo=`<div class="card"><div class="linha" style="justify-content:space-between"><input id="cmpBusca" value="${esc(CMP.busca)}" placeholder="Buscar compra, fornecedor, produto, nº do pedido no fornecedor…" style="max-width:420px"><button class="sec" id="cmpCsv">Baixar lista (planilha)</button></div>
-      <div class="tbl" style="margin-top:10px"><table><tr><th>Compra</th><th>Cadastro</th><th>Dias</th><th>Fornecedor</th><th>Comprador</th><th>Situação</th><th style="text-align:right">${CMP.ver==='semvenda'?'Valor':'Pendente'}</th><th>Nº pedido fornecedor</th><th>Anotação de compras</th></tr>
-      ${lista.map(linha).join('')||'<tr><td colspan="9" class="mut">Nenhuma compra nesta lista.</td></tr>'}</table></div>
-      <p class="mut">"Dias" = dias desde o cadastro da compra no Santri. <b>Sem entrada</b>: nenhum item com entrada no Santri · <b>Entrada parcial</b>: parte já entrou · <b>Em entrada</b>: nota em processo de entrada. "Entrada" é a entrada da nota no Santri, não necessariamente a mercadoria na loja. Clique numa compra para ver os itens e o histórico.${anotaCompras()?' A anotação fica guardada mesmo quando a compra é importada de novo.':''}</p></div>`;
-  }
-  const semImport=!abertas.length&&!ano.length;
-  $('#conteudo').innerHTML=`<div class="linha" style="justify-content:space-between"><h2 style="margin:4px 0;color:var(--navy)">Compras</h2><span class="mut">${ultima?'Dados do Santri importados em '+ultima:''}</span></div>
-   ${semImport?`<div class="aviso">Ainda não há compras importadas${lj?' para esta loja':''}. Importe o relatório "Relação de Compras – Analítico" na Importadora (setor de Compras ou direção).</div>`:''}
-   <div class="kpis" style="margin-bottom:12px">
-     <div class="kpi"><b>${abertas.length}</b><span>em aberto · ${brl(pend(abertas))} pendentes</span></div>
-     <div class="kpi"><b class="${paradasSem.length?'atras':''}">${paradasSem.length}</b><span>+60 dias sem entrada · ${brl(pend(paradasSem))}</span></div>
-     <div class="kpi"><b class="${paradasParc.length?'atras':''}">${paradasParc.length}</b><span>+60 dias com entrada parcial · ${brl(pend(paradasParc))}</span></div>
-     <div class="kpi"><b>${emEntrada.length}</b><span>em entrada (chegando)</span></div>
-     <div class="kpi"><b class="${semVenda.length?'atras':''}">${semVenda.length}</b><span>sem venda vinculada (12 meses) · ${brl(semVenda.reduce((s,c)=>s+Number(c.valor_pedido||0),0))}</span></div>
-     <div class="kpi"><b class="${pctNr<80?'atras':''}">${pctNr}%</b><span>com nº do pedido no fornecedor (90 dias)</span></div></div>
-   <div class="tabs">${VISOES.map(([k,t])=>`<a href="javascript:void 0" data-ver="${k}" class="${CMP.ver===k?'on':''}">${t}</a>`).join('')}</div>${corpo}`;
-  document.querySelectorAll('[data-ver]').forEach(a=>a.onclick=()=>{CMP.ver=a.dataset.ver;CMP.aberto=null;telaCompras();});
-  if($('#cmpBusca')){ let t; $('#cmpBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CMP.busca=e.target.value;telaCompras().then(()=>{const i=$('#cmpBusca'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);}});},400)}; }
+  return `<div class="card"><div class="linha" style="justify-content:space-between"><input id="cmpBusca" value="${esc(CMP.busca)}" placeholder="Buscar compra, fornecedor, produto, nº do pedido no fornecedor…" style="max-width:420px"><span class="mut">${vis.length} de ${lista.length}</span><button class="sec" id="cmpCsv">Baixar planilha</button></div>
+    <div class="tbl" style="margin-top:10px"><table><tr><th>Compra</th><th>Cadastro</th><th>Dias</th><th>Fornecedor</th><th>Comprador</th><th>Situação</th><th style="text-align:right">${modo==='semvenda'?'Valor':'Pendente'}</th><th>Nº pedido fornecedor</th><th>Anotação de compras</th></tr>
+    ${vis.map(linha).join('')||'<tr><td colspan="9" class="mut">Nenhuma compra nesta lista.</td></tr>'}</table></div>
+    <p class="mut">"Dias" = dias desde o cadastro da compra no Santri. <b>Sem entrada</b>: nenhum item com entrada no Santri · <b>Entrada parcial</b>: parte já entrou · <b>Em entrada</b>: nota em processo de entrada. Clique numa compra para ver os itens e o histórico.${anotaCompras()?' A anotação fica guardada mesmo quando a compra é importada de novo.':''}</p></div>`;
+}
+function ligarListaCmp(todas){
+  if($('#cmpBusca')){ let t; $('#cmpBusca').oninput=e=>{clearTimeout(t);t=setTimeout(()=>{CMP.busca=e.target.value;telaCompras(true).then(()=>{const i=$('#cmpBusca'); if(i){i.focus(); i.setSelectionRange(i.value.length,i.value.length);}});},400)}; }
   if($('#cmpCsv')) $('#cmpCsv').onclick=()=>{
     const n=v=>String(Number(v||0).toFixed(2)).replace('.',',');
-    const csv=['Loja;Compra;Cadastro;Dias;Fornecedor;Comprador;Situação;Pendente/Valor;Nº pedido fornecedor;Anotação'].concat(lista.map(c=>[LOJAS.find(l=>l.id===c.loja_id)?.codigo,c.numero,dBR(c.data_cadastro),c.dias??dias(c.data_cadastro),c.fornecedor_nome,c.comprador,c.sit||c.status,n(c.status==='Aberto'?c.valor_pendencias:c.valor_pedido),c.nr_pedido_fornecedor||'',(c.anotacao||'').replace(/;/g,',')].join(';'))).join('\n');
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download=`compras_${CMP.ver}_${h}.csv`;a.click();
+    const csv=['Loja;Compra;Cadastro;Dias;Fornecedor;Comprador;Situação;Pendente/Valor;Nº pedido fornecedor;Anotação'].concat((CMP.visiveis||[]).map(c=>[LOJAS.find(l=>l.id===c.loja_id)?.codigo,c.numero,dBR(c.data_cadastro),c.dias,c.fornecedor_nome,c.comprador,c.sit||c.status,n(c.status==='Aberto'?c.valor_pendencias:c.valor_pedido),c.nr_pedido_fornecedor||'',(c.anotacao||'').replace(/;/g,',')].join(';'))).join('\n');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download=`compras_${hojeLocalJ()}.csv`;a.click();
   };
-  document.querySelectorAll('.cmpNota').forEach(i=>i.onchange=async()=>{const {error}=await sb.rpc('anotar_compra',{p_compra:+i.dataset.id,p_texto:i.value}); if(error) return erro(error); const c=[...abertas,...ano].find(x=>x.id===+i.dataset.id); if(c) c.anotacao=i.value; toast('Anotação salva');});
-  document.querySelectorAll('.cmpL').forEach(r=>r.onclick=()=>abrirCompra(+r.dataset.id,[...abertas,...ano]));
-  if(CMP.aberto) abrirCompra(CMP.aberto,[...abertas,...ano],true);
+  document.querySelectorAll('.cmpNota').forEach(i=>i.onchange=async()=>{const {error}=await sb.rpc('anotar_compra',{p_compra:+i.dataset.id,p_texto:i.value}); if(error) return erro(error); const c=todas.find(x=>x.id===+i.dataset.id); if(c) c.anotacao=i.value; toast('Anotação salva');});
+  document.querySelectorAll('.cmpL').forEach(r=>r.onclick=()=>abrirCompra(+r.dataset.id,todas));
+  if(CMP.aberto) abrirCompra(CMP.aberto,todas,true);
+}
+// Marcar item da fila (já comprado, saiu do estoque, venda direta, não comprar)
+document.addEventListener('change',async e=>{
+  const s=e.target; if(!s.classList||!s.classList.contains('filaMarca')||!s.value) return;
+  const {error}=await sb.rpc('marcar_fila_compra',{p_loja:+s.dataset.l,p_pedido:s.dataset.p,p_codigo:s.dataset.c,p_situacao:s.value,p_obs:null});
+  if(error){ s.value=''; return erro(error); }
+  toast('Item marcado: sai da fila'); CMP.cache=null; telaCompras();
+});
+async function telaCompras(usarCache){
+  if(!veCompras()) return telaLista();
+  const lj=LOJA_VER||(veDuasLojas()?0:EU.loja_id);
+  if(!usarCache||!CMP.cache||CMP.cache.lj!==lj){
+    $('#conteudo').innerHTML=cabJ('Compras')+'<p class="mut">Carregando…</p>';
+    const h0=hojeLocalJ(), doze=new Date(new Date(h0).getFullYear(),new Date(h0).getMonth()-11,1).toISOString().slice(0,10);
+    try{
+      const [r,abertas,ano]=await Promise.all([
+        rpcJ('tela_compras',{p_loja:lj||0}),
+        lerTudo(()=>{let q=sb.from('compras_santri').select('id,loja_id,numero,fornecedor_nome,status,comprador,data_cadastro,prev_entrega,valor_pedido,valor_pendencias,ped_venda_vinculado,nr_pedido_fornecedor,anotacao,anotacao_em,compras_santri_itens(ordem,codigo,nome,unidade,quantidade,em_entrada,entregues,saldo_pendente,preco,marca,ativo)').eq('status','Aberto').order('data_cadastro'); if(lj) q=q.eq('loja_id',lj); return q;}),
+        lerTudo(()=>{let q=sb.from('compras_santri').select('id,loja_id,numero,fornecedor_nome,status,comprador,data_cadastro,data_baixa,valor_pedido,ped_venda_vinculado,nr_pedido_fornecedor,anotacao').neq('status','Cancelado').gte('data_cadastro',doze).order('data_cadastro'); if(lj) q=q.eq('loja_id',lj); return q;})
+      ]);
+      CMP.cache={lj,r,abertas,ano};
+    }catch(e){ return erroTelaJ('Compras',e); }
+  }
+  const {r,abertas,ano}=CMP.cache, hj=r.hoje;
+  const dias=d=>d?Math.round((new Date(hj+'T12:00:00')-new Date(d+'T12:00:00'))/864e5):null;
+  abertas.forEach(c=>{c.sit=situacaoCompra(c); c.dias=dias(c.data_cadastro);}); ano.forEach(c=>{c.dias=dias(c.data_cadastro);});
+  const pend=l=>l.reduce((s,c)=>s+Number(c.valor_pendencias||0),0);
+  const paradas=abertas.filter(c=>c.dias>60&&(c.sit==='Sem entrada'||c.sit==='Entrada parcial')).sort((a,c)=>c.dias-a.dias);
+  const semVenda=ano.filter(c=>!c.ped_venda_vinculado).sort((a,c)=>Number(c.valor_pedido||0)-Number(a.valor_pedido||0));
+  const f=r.fila, p=r.prazo, t=r.transito, ant=r.antes_pagamento||[];
+  // comprado × vendido no mês (a custo)
+  const mesAt=hj.slice(0,7)+'-01', mesAnt=somaDiasCmp(mesAt,-1).slice(0,7)+'-01';
+  const mSoma=(m,k)=>(r.mes||[]).filter(x=>x.mes===m).reduce((s,x)=>s+Number(x[k]||0),0);
+  const cAt=mSoma(mesAt,'comprado'), vAt=mSoma(mesAt,'vendido_custo'), cAn=mSoma(mesAnt,'comprado'), vAn=mSoma(mesAnt,'vendido_custo');
+  const porLoja=(p.por_loja||[]).map(x=>`${esc(lojaCodJ(x.loja))} ${Math.round(x.mediana)}`).join(' · ');
+  const foraN=ant.length+t.fabrica_60;
+  const topo=`<div class="topoSetor">
+    ${indCmp('Fila de compra',`${f.pedidos} vendas`,`pagas e ainda sem compra · <b>${milCmp(f.custo)}</b> a custo${f.atrasados?` · <span class="atras">${f.atrasados} há +7 dias</span>`:''}`,{alerta:f.atrasados>0,ok:!f.pedidos,aba:'comprar'})}
+    ${indCmp('Prazo pago → compra',p.mediana==null?'—':`${Math.round(p.mediana)} dias`,`mediana em 90 dias · ${p.ate7??0}% em até 7 dias${porLoja?' · '+porLoja:''}`,{alerta:p.mediana>7,ok:p.mediana!=null&&p.mediana<=7,aba:'anal:prazo'})}
+    ${indCmp('Comprado no mês',milCmp(cAt),`vendido a custo ${milCmp(vAt)} · mês passado: comprado ${milCmp(cAn)} × vendido ${milCmp(vAn)}`,{aba:'anal:mes'})}
+    ${indCmp('Em trânsito',milCmp(Number(t.fabrica_valor)+Number(t.faturada_valor)),`na fábrica ${milCmp(t.fabrica_valor)} · faturada ${milCmp(t.faturada_valor)} (${t.faturada} notas)`,{alerta:t.faturada_15>0||t.fabrica_60>0,aba:'acomp'})}
+    ${indCmp('Fora da regra',`${foraN}`,`${ant.length} compras sem pagamento do cliente · ${t.fabrica_60} na fábrica há +60 dias`,{alerta:foraN>0,ok:!foraN,aba:'corr'})}
+  </div>`;
+  const fontes=`<span class="mut">Santri: vendas ${dataHoraJ(r.atualizado.vendas)} · compras ${dataHoraJ(r.atualizado.compras)} · pagamentos ${dataHoraJ(r.atualizado.baixas)} · notas ${dataHoraJ(r.atualizado.entradas)}</span>`;
+  const cliente=x=>`${esc(String(x.cliente||'').split(' ').slice(0,3).join(' '))}`;
+  let corpo='';
+  if(CMP.aba==='comprar'){
+    const marcaSel=(x,i)=>anotaCompras()?`<select class="filaMarca" data-l="${x.loja}" data-p="${esc(x.pedido)}" data-c="${esc(i.codigo)}" style="width:auto;padding:3px 6px;font-size:12px"><option value="">marcar…</option><option value="comprado">Já comprado</option><option value="estoque">Saiu do estoque</option><option value="venda_direta">Venda direta</option><option value="nao_comprar">Não comprar</option></select>`:'';
+    const itens=x=>(x.lista||[]).map(i=>`<div class="itFila"><span><b>${esc(i.nome)}</b> <span class="mut">${esc(i.marca)} · ${nfJ(i.qtd)} · ${brl0(i.custo)}${Number(i.estoque)>0?` · <b style="color:var(--ok)">tem ${nfJ(i.estoque)} no estoque</b>`:''}</span></span>${marcaSel(x,i)}</div>`).join('');
+    const subC=J.aba.cmpComp||'fila';
+    const colsF=[['Venda',x=>`<b>${esc(x.pedido)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.pedido}],['Cliente',x=>cliente(x)+`<div class="mut">${esc(String(x.vendedor||'').split(' ')[0])}</div>`,{csv:x=>x.cliente}],
+        ['Fechada',x=>dBR(x.fechamento)],['Pago em',x=>dBR(x.liberado)],['Dias',x=>`<span class="${x.dias>7?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],
+        ['Pago',x=>brl0(x.pago)+`<div class="mut">de ${brl0(x.valor_venda)}</div>`,{r:1,csv:x=>nCsv(x.pago)}],
+        [subC==='fila'?'Falta comprar':'Itens (com estoque na loja)',x=>itens(x),{csv:x=>(x.lista||[]).map(i=>i.codigo+' '+i.nome+' ('+nfJ(i.qtd)+')').join(' | ')}],['Custo',x=>`<b>${brl0(x.custo)}</b>`,{r:1,csv:x=>nCsv(x.custo)}]];
+    corpo=(f.aguardando_pagamento?`<div class="aviso">${f.aguardando_pagamento} vendas dos últimos 60 dias têm itens a comprar mas <b>nenhum pagamento encontrado</b> (${milCmp(f.aguardando_pagamento_custo)} a custo): não comprar até o cliente pagar a 1ª parcela.</div>`:'')+
+      abasJ('cmpComp',[['fila',`Comprar agora (${f.pedidos} · ${milCmp(f.custo)})`],['estoque',`Tem estoque na loja: conferir (${f.com_estoque} · ${milCmp(f.com_estoque_custo)})`]],()=>telaCompras(true))+
+      (subC==='fila'
+        ?listaJ('cmp_fila',colsF,r.fila_lista||[],{vazio:'Nenhuma venda paga esperando compra.',nota:'Vendas dos últimos 60 dias com a 1ª parcela paga e itens sem compra encontrada no Santri (e sem estoque suficiente na loja). "Dias" = desde o pagamento (meta: comprar em até 7). A ligação venda × compra é sugerida pelo produto (mesmo código ou, no revestimento, a mesma linha) até a Santri trazer o nº da venda no relatório de compras. Argamassas (Portokoll, Ceramfix, Sika) ficam fora: são compra para estoque. Se o item já foi comprado ou saiu do estoque, marque ao lado e ele sai da fila. Rio Verde costuma lançar a compra no Santri só quando a nota chega: até lançar, a venda continua aqui.'})
+        :listaJ('cmp_fila_est',colsF,r.fila_estoque||[],{vazio:'Nada aqui.',nota:'Itens de vendas pagas sem compra encontrada, mas a loja tem estoque suficiente do produto (última foto do estoque). Provavelmente saíram do estoque — mas o estoque pode ser de outro cliente esperando entrega. Confira e marque "Saiu do estoque" ou compre.'}));
+  } else if(CMP.aba==='acomp'){
+    const sub=J.aba.cmpAcomp||'trazer';
+    const fluxo=`<div class="fluxo">
+      <div class="etapa${t.fabrica_60?' alerta':''}" data-subc="acomp:fabrica"><div class="t">1 · Na fábrica</div><div class="v">${milCmp(t.fabrica_valor)}</div><div class="s">${t.fabrica} compras sem nota${t.fabrica_60?` · <span class="atras">${t.fabrica_60} há +60 dias</span>`:''}</div></div><div class="seta">›</div>
+      <div class="etapa${t.faturada_sem_data?' alerta':''}" data-subc="acomp:trazer"><div class="t">2 · Faturada (fábrica ou transportadora)</div><div class="v">${milCmp(t.faturada_valor)}</div><div class="s">${t.faturada} notas aguardando a mercadoria${t.faturada_sem_data?` · <span class="atras">${t.faturada_sem_data} sem data do cliente</span>`:''}</div></div><div class="seta">›</div>
+      <div class="etapa${t.deposito_30?' alerta':''}" onclick="location.hash='#/entregas'"><div class="t">3 · No depósito, aguardando o cliente</div><div class="v">${milCmp(t.deposito_valor)}</div><div class="s">${nfJ(t.deposito)} entregas · mediana ${Math.round(t.deposito_mediana||0)} dias · ${nfJ(t.deposito_30)} há +30 dias</div></div></div>
+      <p class="mut" style="margin:4px 0 10px">A etapa 3 vem do gerenciamento de entregas do Santri (manifesto "Aguardando carregamento"). Muitas podem já ter sido entregues sem a baixa do manifesto, sobretudo em Primavera.</p>`;
+    let lista='';
+    if(sub==='trazer') lista=listaJ('cmp_trazer',[['Nota',x=>`<b>${esc(x.nota||'')}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.nota}],['Fornecedor',x=>esc(x.fornecedor)],['Nota chegou',x=>dBR(x.cadastro)],
+        ['Dias',x=>`<span class="${x.dias>15?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Valor',x=>brl0(x.valor),{r:1,csv:x=>nCsv(x.valor)}],['Compra',x=>esc(x.compras||'—')],
+        ['Venda e entrega no Santri',x=>pedCliCmp(x.pedidos),{csv:x=>(x.pedidos||[]).map(p=>p.pedido+' '+p.cliente+' '+p.situacao+(p.previsao?' '+p.previsao:'')).join(' | ')}],
+        ['O que fazer',x=>{const [d,c]=decisaoNFCmp(x,hj); return pillJ(d,c);},{csv:x=>decisaoNFCmp(x,hj)[0]}]],
+        r.faturada_lista||[],{vazio:'Nenhuma nota aguardando mercadoria.',nota:'Notas de revenda que já chegaram (a fábrica faturou) e a mercadoria ainda não foi baixada no Santri: está na fábrica ou na transportadora. <b>Antes de pedir para trazer, confira se o cliente quer receber agora</b> — mercadoria que chega sem entrega marcada ocupa o depósito. "Trazer" = entrega gerada ou cliente espera em até 10 dias; "Confirmar" = venda sem data de entrega no Santri. A venda ligada é sugerida pelo produto da compra.'});
+    else if(sub==='fabrica') lista=listaJ('cmp_fab',[['Compra',x=>`<b>${esc(x.compra)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.compra}],['Fornecedor',x=>esc(x.fornecedor)],['Comprador',x=>esc(String(x.comprador||'').split(' ')[0])],
+        ['Cadastro',x=>dBR(x.cadastro)],['Dias',x=>`<span class="${x.dias>60?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Pendente',x=>brl0(x.pendente),{r:1,csv:x=>nCsv(x.pendente)}],
+        ['Nº pedido na fábrica',x=>esc(x.nr_fornecedor||'—')],['Venda e entrega no Santri',x=>pedCliCmp(x.pedidos),{csv:x=>(x.pedidos||[]).map(p=>p.pedido+' '+p.situacao).join(' | ')}],['Anotação',x=>esc(x.anotacao||'')]],
+        r.fabrica_lista||[],{vazio:'Nenhuma compra aberta sem nota.',nota:'Compras abertas sem nenhuma nota ligada e sem item com entrada: a fábrica ainda não faturou. Mais de 60 dias é alerta — cobrar a fábrica ou cancelar no Santri. Para anotar o retorno, use a aba "Todas as compras abertas".'});
+    else lista=listaCmp([...abertas].sort((a,c)=>c.dias-a.dias),'abertas');
+    corpo=fluxo+abasJ('cmpAcomp',[['trazer',`Faturadas: trazer agora? (${t.faturada})`],['fabrica',`Na fábrica (${t.fabrica})`],['abertas',`Todas as compras abertas (${abertas.length})`]],()=>telaCompras(true))+lista;
+  } else if(CMP.aba==='corr'){
+    const sub=J.aba.cmpCorr||'sempag'; let lista='';
+    if(sub==='sempag') lista=listaJ('cmp_sempag',[['Compra',x=>`<b>${esc(x.compra)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.compra}],['Comprada em',x=>dBR(x.compra_em)],['Venda',x=>esc(x.pedido)],['Cliente',x=>cliente(x),{csv:x=>x.cliente}],
+        ['Valor da venda',x=>brl0(x.valor_venda),{r:1,csv:x=>nCsv(x.valor_venda)}],['Pago',x=>Number(x.pago)?brl0(x.pago):'<span class="atras">nada</span>',{r:1,csv:x=>nCsv(x.pago)}],['1º pagamento',x=>x.primeiro_pagamento?`<span class="atras">${dBR(x.primeiro_pagamento)}</span>`:'—'],
+        ['Itens',x=>esc(x.marcas||'')],['Custo dos itens',x=>brl0(x.custo),{r:1,csv:x=>nCsv(x.custo)}]],ant,{vazio:'Nenhuma compra antes do pagamento nos últimos 90 dias.',nota:'Compras dos últimos 90 dias ligadas (pelo produto) a uma venda que não tinha pagamento até 3 dias depois da compra. Pode ser compra sem o cliente pagar, ligação errada (outra venda do mesmo produto) ou pagamento no cartão que o Santri não ligou ao pedido (CAR…-BAI…) — conferir com o financeiro.'});
+    else if(sub==='paradas') lista=listaCmp(paradas,'paradas');
+    else if(sub==='pagasem') lista=listaJ('cmp_pagasem',[['Venda',x=>`<b>${esc(x.pedido)}</b> <span class="mut">${esc(lojaCodJ(x.loja))}</span>`,{csv:x=>x.pedido}],['Cliente',x=>cliente(x),{csv:x=>x.cliente}],['Fechada',x=>dBR(x.fechamento)],['Pago em',x=>dBR(x.liberado)],
+        ['Pago',x=>brl0(x.pago),{r:1,csv:x=>nCsv(x.pago)}],['Itens',x=>`${x.itens} · ${esc(x.marcas||'')}`],['Custo',x=>brl0(x.custo),{r:1,csv:x=>nCsv(x.custo)}],['Estoque',x=>x.algum_estoque?'tem algum item':'']],
+        r.fila_antiga||[],{vazio:'Nada aqui.',nota:'Vendas pagas fechadas há mais de 60 dias (até 180) com itens sem compra encontrada. Quase sempre é ligação que o sistema não achou (produto com outro código, compra feita por outro fornecedor, saiu do estoque) — mas vale conferir as maiores.'});
+    else if(sub==='semvenda') lista=listaCmp(semVenda,'semvenda');
+    else lista=`<div class="card"><h3>Compra acima do custo da promoção</h3><p class="mut">Em construção. Para comparar o preço de cada compra com o custo da Formação de Custo e Preço válida no mês (custo da promoção, quando houver), o sistema precisa guardar o histórico da Formação — hoje a Importadora sobrescreve. O log de custos do Santri tem esse histórico; falta o leitor dele.</p></div>`;
+    corpo=abasJ('cmpCorr',[['sempag',`Compra sem pagamento do cliente (${ant.length})`],['paradas',`Paradas +60 dias (${paradas.length} · ${milCmp(pend(paradas))})`],['pagasem',`Venda paga sem compra +60 dias (${(r.fila_antiga||[]).length})`],['semvenda',`Compra sem venda vinculada (${semVenda.length})`],['promo','Acima do custo da promoção']],()=>telaCompras(true))+lista;
+  } else {
+    const sub=J.aba.cmpAnal||'mes'; let lista='';
+    if(sub==='mes'){
+      const meses=[...new Set((r.mes||[]).map(x=>x.mes))].sort().reverse(), lojas=[...new Set((r.mes||[]).map(x=>x.loja))];
+      const nomeM=m=>MESES_J[+m.slice(5,7)-1].slice(0,3)+'/'+m.slice(0,4);
+      const max=Math.max(1,...(r.mes||[]).map(x=>Math.max(Number(x.comprado),Number(x.vendido_custo))));
+      lista=`<div class="card"><h3>Comprado × vendido a custo, por mês</h3><div class="tbl"><table><tr><th>Mês</th>${lojas.length>1?'<th>Loja</th>':''}<th style="text-align:right">Compras</th><th style="text-align:right">Comprado</th><th style="text-align:right">Vendido a custo</th><th style="text-align:right">Comprado ÷ vendido</th><th style="width:30%"></th></tr>
+        ${meses.map(m=>(r.mes||[]).filter(x=>x.mes===m).map(x=>{const c=Number(x.comprado), v=Number(x.vendido_custo);
+          return `<tr><td>${nomeM(m)}${m===mesAt?' <span class="mut">(até hoje)</span>':''}</td>${lojas.length>1?`<td>${esc(lojaCodJ(x.loja))}</td>`:''}<td style="text-align:right">${x.compras}</td><td style="text-align:right">${brl0(c)}</td><td style="text-align:right">${brl0(v)}</td>
+            <td style="text-align:right">${v>0?Math.round(100*c/v)+'%':'—'}</td><td><div class="barra" style="width:${Math.max(0,Math.round(100*c/max))}%;background:var(--navy)"></div><div class="barra" style="width:${Math.max(0,Math.round(100*v/max))}%;background:var(--gold)"></div></td></tr>`;}).join('')).join('')}</table></div>
+        <p class="mut"><span class="barra" style="display:inline-block;width:14px;background:var(--navy)"></span> comprado (valor do pedido de compra no Santri, com IPI/ST) · <span class="barra" style="display:inline-block;width:14px;background:var(--gold)"></span> vendido a custo (custo de compra do Santri nas vendas, menos devoluções, sem venda direta). Como a compra vem depois da venda, um mês forte de vendas puxa as compras do mês seguinte.</p></div>`;
+    } else if(sub==='prazo'){
+      lista=`<div class="card"><h3>Prazo do pagamento do cliente até a compra</h3><div class="tbl"><table><tr><th>Loja</th><th style="text-align:right">Itens comprados (90 dias)</th><th style="text-align:right">Mediana</th><th style="text-align:right">Em até 7 dias</th></tr>
+        ${(p.por_loja||[]).map(x=>`<tr><td>${esc(lojaCodJ(x.loja))}</td><td style="text-align:right">${x.itens}</td><td style="text-align:right"><b class="${x.mediana>7?'atras':''}">${Math.round(x.mediana)} dias</b></td><td style="text-align:right">${x.ate7}%</td></tr>`).join('')}</table></div>
+        <p class="mut">Do dia em que a venda foi liberada (fechamento ou 1ª parcela paga, o que vier depois) até o cadastro da compra no Santri. Rio Verde costuma cadastrar a compra quando a nota chega, então o prazo de lá aparece maior do que o real. Prazo da fábrica (compra → nota → mercadoria) e frete por fornecedor estão em <a href="#/chegada">Chegada</a>.</p></div>`;
+    } else {
+      const forn={}; ano.forEach(c=>{const k=c.fornecedor_nome||'?'; (forn[k]=forn[k]||{n:0,v:0,ab:0,nr:0}); forn[k].n++; forn[k].v+=Number(c.valor_pedido||0); if(c.status==='Aberto')forn[k].ab++; if(c.nr_pedido_fornecedor)forn[k].nr++;});
+      lista=`<div class="card"><h3>Por fornecedor (últimos 12 meses)</h3><div class="tbl"><table><tr><th>Fornecedor (cadastro no Santri)</th><th style="text-align:right">Compras</th><th style="text-align:right">Valor</th><th style="text-align:right">Em aberto</th><th style="text-align:right">Com nº do pedido no fornecedor</th></tr>
+        ${Object.entries(forn).sort((a,c)=>c[1].v-a[1].v).map(([k,x])=>`<tr><td>${esc(k)}</td><td style="text-align:right">${x.n}</td><td style="text-align:right">${brl(x.v)}</td><td style="text-align:right">${x.ab}</td><td style="text-align:right">${Math.round(x.nr/x.n*100)}%</td></tr>`).join('')}</table></div>
+        <p class="mut">A mesma fábrica pode aparecer em mais de um cadastro (ex.: Dexco por centro de distribuição). O nº do pedido no fornecedor liga a compra à carteira da fábrica (data de pronto).</p></div>`;
+    }
+    corpo=abasJ('cmpAnal',[['mes','Comprado × vendido'],['prazo','Prazo'],['forn','Por fornecedor']],()=>telaCompras(true))+lista;
+  }
+  const ABAS=[['comprar',`Comprar (${f.pedidos})`],['acomp','Acompanhar'],['corr',`Corrigir (${foraN})`],['anal','Analisar']];
+  $('#conteudo').innerHTML=cabJ('Compras'+lojaSufixo(),fontes)+topo+blocoCaixaCmp(r)+
+    `<div class="tabs abasSetor">${ABAS.map(([k,tt])=>`<a href="javascript:void 0" data-abac="${k}" class="${CMP.aba===k?'on':''}">${tt}</a>`).join('')}</div>`+corpo;
+  document.querySelectorAll('[data-abac]').forEach(a=>a.onclick=()=>{CMP.aba=a.dataset.abac;CMP.aberto=null;telaCompras(true);});
+  document.querySelectorAll('[data-irc]').forEach(a=>a.onclick=()=>{const [ab,sb2]=a.dataset.irc.split(':'); CMP.aba=ab; if(sb2) J.aba[SUBK_CMP[ab]]=sb2; telaCompras(true).then(()=>document.querySelector('.abasSetor')?.scrollIntoView({behavior:'smooth'}));});
+  document.querySelectorAll('[data-subc]').forEach(a=>a.onclick=()=>{const [ab,sb2]=a.dataset.subc.split(':'); J.aba[SUBK_CMP[ab]]=sb2; telaCompras(true);});
+  if($('#cxInformar')) $('#cxInformar').onclick=()=>modalSaldoCmp(r);
+  ligarListaCmp([...abertas,...ano]);
 }
 async function abrirCompra(id,todas,manter){
   const det=document.querySelector(`[data-det="${id}"]`); if(!det) return;
