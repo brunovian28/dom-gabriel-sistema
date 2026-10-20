@@ -6,6 +6,7 @@ Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para ba
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 20/10/2026 | Bruno (Claude) | CLAUDE.md: regra "faça, não mostre" (sem copiar e colar código) | — | ver git log |
 | 20/10/2026 | Bruno (Claude) | Docs para trabalho a dois: `CLAUDE.md`, `docs/HANDOFF.md`, `docs/ALTERACOES.md`, `docs/PROXIMOS_PASSOS.md`; migrations 26–39 copiadas para `sql/` | — | ver git log |
 | 20/10/2026 | Bruno (Claude) | Compras refeita no padrão por setor: indicadores no topo, caixa para comprar (saldo informado), fila de compra com marcação por item, "Faturadas: trazer agora?", Corrigir, Analisar | 39, 39b, 39c | 60e9689 |
 | 16/10/2026 | Bruno (Claude) | Telas da jornada: Direção, Orçamentos, Recebimentos, Chegada, Entregas, Estoque, Financeiro; coluna "No Santri" em Pedidos | 38 | 8fee442 |

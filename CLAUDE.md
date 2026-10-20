@@ -16,6 +16,7 @@ Duas pessoas trabalham neste repositório, cada uma com a própria Claude: **Bru
 5. SQL novo vai para `sql/migration_NN_nome.sql`.
 
 ## Regras
+- **Faça, não mostre.** Edite os arquivos no repositório, teste, faça commit e push você mesma; mude o banco pelo conector do Supabase (`apply_migration`). Nunca peça para a pessoa copiar e colar código ou SQL. Se faltar permissão (GitHub sem escrita, Supabase sem a organização), diga exatamente qual conector reautorizar.
 - **Migrations numeradas em sequência** (a última está em `docs/ALTERACOES.md`). Antes de criar uma, a pessoa avisa a outra para não haver dois números iguais.
 - **Regra de negócio nova é decisão do Bruno/Fabio.** Pergunte antes; registre a resposta em "Decisões" do `docs/HANDOFF.md`.
 - **Repositório público** (GitHub Pages gratuito). Nunca commitar: token, senha, chave `service_role`, valores financeiros da empresa, nomes ou dados de clientes. A chave publishable do Supabase no HTML é pública por desenho; a segurança está no RLS e nas RPCs.
