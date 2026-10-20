@@ -1,0 +1,9 @@
+-- Migration 28b2 · (já aplicada) reescrita de previa/aplicar_importacao_{vendas,precos,produtos}
+-- Feita por um bloco DO que leu pg_get_functiondef de cada função, trocou a checagem
+-- "só direção" por:  if not interno.pode_importar('<tipo>') then raise exception 'Sem permissão para importar <tipo>'; end if;
+-- e acrescentou SECURITY DEFINER; depois executou o texto novo (EXECUTE).
+-- Também criou as políticas ps_setor (precos_staging) e stg_setor (produtos_staging):
+--   for all to authenticated using (exists (select 1 from public.importacoes i
+--     where i.id = <tabela>.importacao_id and i.usuario_id = (select auth.uid())))
+-- Conferido: as 8 funções previa/aplicar (vendas, compras, precos, produtos) estão com prosecdef = true.
+-- entradas (28c) já nasceu com security definer + interno.pode_importar('entradas').
