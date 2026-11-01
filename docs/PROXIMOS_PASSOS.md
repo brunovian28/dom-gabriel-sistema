@@ -1,6 +1,21 @@
 # Próximos passos e ideias em aberto
 
-Atualizado em 20/10/2026. Antes de construir qualquer item, confirme com o Bruno as decisões marcadas como "falta decidir".
+Atualizado em 20/10/2026 (seção 0 em 01/11/2026). Antes de construir qualquer item, confirme com o Bruno as decisões marcadas como "falta decidir".
+
+## 0. Módulo Controller (diretoria) — PRIORIDADE (01/11/2026)
+Objetivo: dar clareza à diretoria (inclusive aos diretores comerciais) sobre margem, caixa, contas a pagar e a receber.
+
+| # | Entrega | Situação |
+|---|---|---|
+| F1 | DRE gerencial (três momentos da venda) | **desenhada** — `docs/superpowers/specs/2026-11-01-dre-gerencial-design.md`. Não construir ainda |
+| F2 | Fluxo de caixa + contas a pagar e a receber | **próximo a desenhar** (conversa própria) |
+| F3 | Simulador de decisões | depois |
+| C1 | Discurso "juros pago pelo cliente" (tabela à vista × parcelas) | pequena |
+| F4 | Visão do investidor (padrão de mercado) | depois do balanço |
+
+Ordem de construção proposta: **base comum** (classificação do plano de contas, unidades, cadastros de §7 da spec F1) → **F2 caixa** (a dor mais urgente) → **F1 DRE**. F1 e F2 usam a mesma base.
+
+Para a conversa da F2, já se sabe: fornecedor é pago à vista e é a primeira conta paga; cartão parcelado é antecipado (quase à vista); comissão e RT saem no mês seguinte ao fechamento (pode mudar para "após a 1ª parcela"); há impostos e contas em atraso; dívida com bancos, parcelamentos e empréstimos entre lojas/sócios e a Chapadão do Sul; a tela Compras já tem "Caixa para comprar · 30 dias" (`caixa_saldo`, `informar_saldo_caixa`); relatórios de contas a pagar/receber e baixas já são importados (`titulos_santri`, `baixas_santri`) mas estão parados em 16/10.
 
 ## 1. Funil do cliente numa página só (ideia do Bruno, 20/10)
 Uma página à vista de todos com um card por cliente/pedido que anda sozinho da prospecção à entrega. No card: situação e datas importantes. No futuro, cada mudança de coluna dispara ou sugere uma mensagem ao cliente.
