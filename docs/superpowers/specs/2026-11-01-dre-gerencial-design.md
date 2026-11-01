@@ -123,12 +123,12 @@ Rota nova na área da direção. Padrão do sistema: números que norteiam no to
 Esboço aprovado: `.superpowers/brainstorm/` na pasta do Bruno (`dre-momentos.html`), fora do repositório.
 
 ## 9. Acesso
-- Tela e cadastros: `admin` e `direcao`. `financeiro` vê a tela (sem o % por pessoa da diretoria). **A confirmar na revisão.**
+- Tela e cadastros: `admin` e `direcao`, com acesso a tudo (inclui o % da comissão da diretoria por pessoa). **Decisão (01/11):** a operação/financeiro também é diretoria e vê tudo — o usuário dela deve ter papel `direcao`.
 - Padrão do sistema: RPC `SECURITY DEFINER` que checa papel por dentro; RLS com `(select interno.funcao())`.
 
 ## 10. Riscos e pré-requisitos
 - **Dados desatualizados:** relatórios do Santri parados em 16/10. Antes de mostrar números à diretoria, importar vendas, entradas, entregas e contas a pagar atualizados.
-- **Contas a pagar por vencimento:** hoje a exportação é por emissão; a regra do mês "anterior ao vencimento" precisa de todas as contas do período — confirmar o filtro da exportação.
+- **Mês de competência das contas:** o Bruno acredita que o relatório do Santri já traz a competência e a data de pagamento — confirmar no relatório. Se trouxer, a competência do Santri vale e a regra por tipo (§6) fica só para conta sem competência. Conta com dúvida de classificação é decidida item a item com o Bruno.
 - **Ligação venda × compra sugerida:** onde falhar, fica estimado. Melhora se a Santri gravar o nº da venda na compra (pedido feito).
 - A DRE do Santri não é usada como fonte (é por caixa); serve só para conferência.
 
