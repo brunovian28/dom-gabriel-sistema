@@ -20,6 +20,7 @@ Hoje a informação está misturada: a DRE do Santri é por caixa (só o que foi
 | F2 | Fluxo de caixa (realizado + projetado) | depois da F1 — reaproveita a classificação das contas |
 | F3 | Simulador de decisões (demissão, veículo, Quirinópolis, comissão da diretoria, nova empresa) | depois |
 | C1 | Ferramenta do discurso "juros pago pelo cliente" (tabela à vista × parcelas na proposta) | pequena, entra quando der |
+| F4 | Visão do investidor: DRE no padrão de mercado (CPC) + indicadores (dívida líquida/EBITDA, cobertura de juros, liquidez, ciclo de caixa) + estimativa de valor da empresa | depois do caixa e do balanço |
 | — | Balanço; Chapadão do Sul (sistema próprio, emprestou dinheiro da loja) | depois de PVA e RV |
 
 ## 3. Conceito: os três momentos de uma venda
@@ -94,6 +95,7 @@ Regras que mudam em relação à DRE do Santri:
 - Cada conta do plano é classificada uma vez pela direção: linha da DRE (grupo de custo fixo, variável, juros, dívida, investimento, empréstimo concedido, entre lojas, fora da DRE) e **regra do mês**:
   - **Mês anterior ao vencimento:** salários, encargos, impostos (se referem ao mês trabalhado/vendido).
   - **Mês da emissão:** o resto (aluguel, energia, combustível…).
+- Cada conta também recebe a **linha equivalente na DRE padrão de mercado** (receita líquida, lucro bruto, despesas operacionais, depreciação, resultado financeiro, IR/CSLL), para a F4 sair sem reclassificar. O desgaste de bens fica marcado à parte para o EBITDA (= resultado da operação + desgaste) sair certo.
 - A Claude prepara o rascunho da classificação; o Bruno confirma.
 - Contas variáveis já calculadas por venda (comissões, chapa, frete de compra) não entram de novo pelo contas a pagar — servem só para apurar o real (§5.3) e conferir.
 - Centro de custo QUIRINÓPOLIS → unidade Quirinópolis. **Decisão (01/11): Quirinópolis carrega só custos diretos** e o resultado dela se lê como "quanto contribui" para a estrutura de RV.
@@ -131,6 +133,8 @@ Esboço aprovado: `.superpowers/brainstorm/` na pasta do Bruno (`dre-momentos.ht
 - **Mês de competência das contas:** o Bruno acredita que o relatório do Santri já traz a competência e a data de pagamento — confirmar no relatório. Se trouxer, a competência do Santri vale e a regra por tipo (§6) fica só para conta sem competência. Conta com dúvida de classificação é decidida item a item com o Bruno.
 - **Ligação venda × compra sugerida:** onde falhar, fica estimado. Melhora se a Santri gravar o nº da venda na compra (pedido feito).
 - A DRE do Santri não é usada como fonte (é por caixa); serve só para conferência.
+- **Reforma tributária:** em 2026 as notas já destacam CBS 0,9% e IBS 0,1% em caráter de teste (compensados, LC 214/2025); em 2027 a CBS substitui PIS/COFINS; de 2029 a 2032 o ICMS cai gradualmente e o IBS sobe; em 2033 o ICMS acaba. As alíquotas estimadas da DRE 1 ficam em parâmetros com data de vigência, para mudar sem mexer no cálculo.
+- Regras de skills financeiras de padrão americano (`financial-analyst`, `month-end-close`) são conferidas contra a norma brasileira (CPC/CFC, legislação) antes de usar.
 
 ## 11. Testes
 - Cálculo: conferir uma venda nos três momentos (estimado → custo real → entrega real) contra a capa do pedido e a nota de entrada.
