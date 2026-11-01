@@ -24,6 +24,7 @@ Na pasta do PC do Bruno o sistema se chama `sistema_dom_gabriel.html` (= `index.
 - Funções no schema `interno`: `e_ativo`, `meu_papel`, `minha_loja`, `ve_todas_lojas`, `le_todas_lojas`, `pode_ler_capa`, `pode_editar_capa`, `pode_ver_compras` (admin, direção, gerente, compras, financeiro, logística), `pode_ver_financeiro` (admin, direção, financeiro), `pode_importar(tipo)`, `lojas_tela(p_loja)` (0 = as duas, só para quem lê as duas).
 - RLS com `(select interno.x())` (initplan) por desempenho — manter o padrão.
 - Telas novas chamam uma RPC `SECURITY DEFINER` que checa papel e loja por dentro (o advisor avisa; é intencional).
+- Desde a migration 40, o papel `anon` não executa funções do schema `public` (e as novas já nascem sem EXECUTE para anon). Função nova que a tela chama: `grant execute ... to authenticated`.
 - Vendedor não vê Formação de Preço (ST, créditos, custo comercial), compras nem financeiro.
 
 ## Importadora (11 relatórios do Santri)

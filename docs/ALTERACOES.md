@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 39** (a próxima é a 40 — avise antes de criar).
+**Última migration: 40** (a próxima é a 41 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 01/11/2026 | Bruno (Claude) | Segurança: funções do banco (SECURITY DEFINER) não podem mais ser chamadas sem login (anon perde EXECUTE; funções novas já nascem fechadas). Spec da F1 (DRE gerencial) em `docs/superpowers/specs/` | 40 | ver git log |
 | 20/10/2026 | Bruno (Claude) | CLAUDE.md: regra "faça, não mostre" (sem copiar e colar código) | — | ver git log |
 | 20/10/2026 | Bruno (Claude) | Docs para trabalho a dois: `CLAUDE.md`, `docs/HANDOFF.md`, `docs/ALTERACOES.md`, `docs/PROXIMOS_PASSOS.md`; migrations 26–39 copiadas para `sql/` | — | ver git log |
 | 20/10/2026 | Bruno (Claude) | Compras refeita no padrão por setor: indicadores no topo, caixa para comprar (saldo informado), fila de compra com marcação por item, "Faturadas: trazer agora?", Corrigir, Analisar | 39, 39b, 39c | 60e9689 |
