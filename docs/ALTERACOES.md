@@ -6,6 +6,7 @@ Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para ba
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 02/11/2026 | Bruno (Claude) | Tela Caixa: aba Saldos (contas bancárias, informar saldos, caixa mínimo). Fecha o plano 1 da F2 | — | ver git log |
 | 02/11/2026 | Bruno (Claude) | Tela Caixa: aba Atrasados a pagar com triagem em lote | — | ver git log |
 | 02/11/2026 | Bruno (Claude) | Tela Caixa: números do topo e projeção semana a semana / mês a mês (menu Caixa) | — | ver git log |
 | 02/11/2026 | Bruno (Claude) | Caixa (F2): projeção de 13 semanas e 12 meses com o que está lançado, atrasados pela triagem (RPCs `tela_caixa` e `caixa_detalhe`) | 44, 44b, 44c | ver git log |

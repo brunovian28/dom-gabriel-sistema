@@ -2228,7 +2228,66 @@ document.addEventListener('change',e=>{
   if(s.classList.contains('cxAtrChk')){ const id=+s.dataset.id; if(s.checked) CX.marcados.add(id); else CX.marcados.delete(id); return cxAtrMarcados(); }
   if(s.id==='cxAtrDec') $('#cxAtrDataBox').classList.toggle('hide',!['pagar_em','renegociado'].includes(s.value));
 });
-function abaSaldosCx(r){ return ''; }
+// Aba "Saldos": contas bancárias por loja, último saldo informado e caixa mínimo
+const numCx=s=>{ s=String(s||'').trim(); if(!s) return null; s=s.replace(/[R$\s]/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); const n=Number(s); return isFinite(n)?n:NaN; };
+function abaSaldosCx(r){
+  const contas=r.saldo.contas||[], hj=r.hoje;
+  const blocos=(r.lojas||[]).map(l=>{
+    const cs=contas.filter(c=>c.loja===l), pl=(r.por_loja||[]).find(x=>x.loja===l)||{}, total=cs.reduce((s,c)=>s+(Number(c.saldo)||0),0);
+    return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">${esc(lojaCodJ(l))}</h3>
+        <div class="linha"><label style="margin:0">Caixa mínimo</label><input class="cxMinIn" data-l="${l}" inputmode="decimal" style="width:150px" value="${pl.minimo?Number(pl.minimo).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}" placeholder="ex.: 150.000,00"></div></div>
+      <div class="tbl"><table><tr><th>Banco</th><th>Conta</th><th style="text-align:right">Último saldo</th><th>Data</th><th></th></tr>
+      ${cs.map(c=>{ const velho=c.data&&diasEntreCx(c.data,hj)>7;
+        return `<tr class="cxConta" data-conta="${c.conta_id}"><td>${esc(c.banco)}</td><td>${esc(c.nome)}</td><td style="text-align:right">${c.saldo==null?'<span class="mut">sem saldo</span>':brl0(c.saldo)}</td>
+          <td>${c.data?`<span class="${velho?'atras':''}">${dBR(c.data)}${velho?` (${diasEntreCx(c.data,hj)} dias)`:''}</span>`:'—'}</td>
+          <td style="text-align:right"><button class="link" data-cxdes="${c.conta_id}" data-l="${l}">Desativar</button></td></tr>`; }).join('')||'<tr><td colspan="5" class="mut">Nenhuma conta cadastrada. Use "Nova conta".</td></tr>'}
+      <tr><td colspan="2"><b>Total da loja</b></td><td style="text-align:right"><b>${brl0(total)}</b></td><td colspan="2"></td></tr></table></div></div>`; }).join('');
+  return `<div id="cxSaldos"><div class="linha" style="justify-content:space-between;margin-bottom:8px"><p class="mut" style="margin:0;max-width:640px">Toda segunda, informe o saldo de cada conta (o que está disponível hoje). Caixa mínimo: o valor que a diretoria quer ter sempre (ex.: uma folha + impostos do mês).</p>
+    <div class="linha"><button id="cxSalInformar">Informar saldos</button><button class="sec" id="cxSalNova">Nova conta</button></div></div>${blocos}</div>`;
+}
+function modalSaldosCx(r){
+  const cs=r.saldo.contas||[];
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Saldo de cada conta hoje</h3><p class="mut">O que está disponível hoje em cada conta. Deixe em branco a conta que não mudou. Fica guardado com a data e quem informou.</p>
+    ${cs.map(c=>`<label>${esc(lojaCodJ(c.loja))} · ${esc(c.banco)} · ${esc(c.nome)}${c.saldo==null?'':` <span class="mut">· último: ${brl0(c.saldo)} em ${dBR(c.data)}</span>`}</label><input class="cxSalIn" data-c="${c.conta_id}" inputmode="decimal" placeholder="ex.: 125.000,00">`).join('')||'<p class="mut">Cadastre uma conta primeiro.</p>'}
+    <label>Observação (opcional)</label><input id="cxSalObs" placeholder="ex.: conferido no extrato">
+    <div class="linha" style="margin-top:12px"><button id="cxSalSalvar">Salvar</button><button class="sec" id="cxSalX">Cancelar</button></div></div></div>`;
+}
+function modalContaCx(r){
+  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Nova conta bancária</h3>
+    <label>Loja</label><select id="cxNovaLoja">${(r.lojas||[]).map(l=>`<option value="${l}">${esc(lojaCodJ(l))}</option>`).join('')}</select>
+    <label>Banco</label><input id="cxNovaBanco" placeholder="ex.: Sicredi"><label>Nome da conta</label><input id="cxNovaNome" placeholder="ex.: Conta movimento">
+    <div class="linha" style="margin-top:12px"><button id="cxNovaSalvar">Cadastrar</button><button class="sec" id="cxSalX">Cancelar</button></div></div></div>`;
+}
+document.addEventListener('click',async e=>{
+  const t=e.target; if(!t.closest) return; const r=CX.cache?.r;
+  if(t.id==='cxSalX') return $('#modal').innerHTML='';
+  if(t.id==='cxSalInformar'&&r) return modalSaldosCx(r);
+  if(t.id==='cxSalNova'&&r) return modalContaCx(r);
+  if(t.id==='cxSalSalvar'){
+    const itens=[...document.querySelectorAll('.cxSalIn')].map(i=>({c:+i.dataset.c,v:numCx(i.value),txt:i.value})).filter(x=>x.v!==null);
+    const ruim=itens.find(x=>isNaN(x.v)); if(ruim) return toast('Valor inválido: '+ruim.txt);
+    if(!itens.length) return toast('Preencha o saldo de ao menos uma conta');
+    try{ for(const x of itens) await rpcJ('informar_saldo_conta',{p_conta:x.c,p_saldo:x.v,p_obs:$('#cxSalObs').value.trim()||null}); }catch(err){ return erro(err); }
+    $('#modal').innerHTML=''; toast('Saldo salvo'); CX.cache=null; return telaCaixaJ();
+  }
+  if(t.id==='cxNovaSalvar'){
+    const banco=$('#cxNovaBanco').value.trim(), nome=$('#cxNovaNome').value.trim();
+    if(!banco||!nome) return toast('Informe o banco e o nome da conta');
+    try{ await rpcJ('salvar_conta_bancaria',{p_id:null,p_loja:+$('#cxNovaLoja').value,p_banco:banco,p_nome:nome,p_ativo:true}); }catch(err){ return erro(err); }
+    $('#modal').innerHTML=''; toast('Conta cadastrada'); CX.cache=null; return telaCaixaJ();
+  }
+  const des=t.closest('[data-cxdes]');
+  if(des&&r){ const c=(r.saldo.contas||[]).find(x=>x.conta_id===+des.dataset.cxdes); if(!c) return;
+    if(!confirm(`Desativar a conta ${c.banco} · ${c.nome}? Ela deixa de entrar na soma do saldo.`)) return;
+    try{ await rpcJ('salvar_conta_bancaria',{p_id:c.conta_id,p_loja:c.loja,p_banco:c.banco,p_nome:c.nome,p_ativo:false}); }catch(err){ return erro(err); }
+    toast('Conta desativada'); CX.cache=null; telaCaixaJ(); }
+});
+document.addEventListener('change',async e=>{
+  const s=e.target; if(!s.classList||!s.classList.contains('cxMinIn')) return;
+  const v=numCx(s.value); if(v===null||isNaN(v)||v<0) return toast('Valor inválido: '+s.value);
+  try{ await rpcJ('salvar_parametros_caixa',{p_loja:+s.dataset.l,p_caixa_minimo:v}); }catch(err){ return erro(err); }
+  toast('Caixa mínimo salvo'); CX.cache=null; telaCaixaJ();
+});
 async function detalheCx(grupo,col){
   let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados}); }catch(e){ return erro(e); }
   J.busca.cxDet='';
