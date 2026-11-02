@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 42** (a próxima é a 43 — avise antes de criar).
+**Última migration: 43** (a próxima é a 44 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 02/11/2026 | Bruno (Claude) | Caixa (F2): triagem dos títulos atrasados com histórico (decisão por título, em lote) | 43 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Caixa (F2): contas bancárias com saldo por conta, caixa mínimo por loja; Compras soma as contas | 42 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Caixa (F2) · base comum: classificação do plano de contas por grupo do caixa, status único do título (pago/aberto/vencido) e tela Plano de contas na Direção | 41 | ver git log |
 | 01/11/2026 | Bruno (Claude) | Segurança: funções do banco (SECURITY DEFINER) não podem mais ser chamadas sem login (anon perde EXECUTE; funções novas já nascem fechadas). Spec da F1 (DRE gerencial) em `docs/superpowers/specs/` | 40 | ver git log |
