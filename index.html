@@ -2132,7 +2132,7 @@ const fonteJ=(t,rel)=>`<span class="mut">${rel}: ${t?dataHoraJ(t):'nunca importa
 const pillJ=(t,cor)=>`<span class="pill" style="background:${cor};white-space:nowrap">${esc(t)}</span>`;
 
 // ---------- CAIXA ----------
-const CX={cache:null,atrasados:'triagem',visao:'semanas',cols:[]};
+const CX={cache:null,atrasados:'triagem',visao:'semanas',cols:[],filtro:'todos',marcados:new Set()};
 const CX_SAIDAS=['fornecedor','pessoal','impostos','comissoes_rt','divida','fixo','outros'];
 const CX_ENTRADAS=[['clientes','Clientes'],['outros_entrada','Outras entradas']];
 const CX_TRIAGEM={pagar_em:'Pagar em',renegociado:'Renegociado',em_disputa:'Em disputa',nao_e_divida:'Não é dívida',para_diretoria:'Para a diretoria',prometeu:'Prometeu pagar',negociando:'Negociando',perdido:'Perdido'};
@@ -2177,7 +2177,57 @@ function abaProjecaoCx(r){
     ${tabela}
     <p class="mut">Projeção com o que está lançado no Santri. Ainda não entram: custo fixo que não foi lançado, vendas futuras e parcelas de dívida fora do Santri. Cartão não entra porque já foi antecipado. A receber vencido há mais de 60 dias só entra com promessa de pagamento. Clique num valor para ver os títulos.</p></div>`;
 }
-function abaAtrasadosCx(r){ return ''; }
+// Aba "Atrasados a pagar": triagem em lote (a decisão de cada título alimenta a projeção)
+const CX_FILTROS=[['todos','Todos'],['sem','Sem decisão'],['dir','Para a diretoria'],['disp','Em disputa']];
+const CX_DEC_COR={pagar_em:'var(--ok)',renegociado:'var(--ok)',em_disputa:'#888',nao_e_divida:'#888',para_diretoria:'var(--morna)'};
+const cxPertence=(x,k)=>k==='todos'||(k==='sem'&&!x.decisao)||(k==='dir'&&x.decisao==='para_diretoria')||(k==='disp'&&x.decisao==='em_disputa');
+const cxAtrFiltrados=r=>{ const b=(J.busca.cxAtr||'').trim().toUpperCase();
+  return (r.atrasados||[]).filter(x=>cxPertence(x,CX.filtro)).filter(x=>!b||Object.values(x).map(v=>v==null?'':String(v)).join(' ').toUpperCase().includes(b)); };
+function cxAtrMarcados(){ const m=CX.marcados, r=CX.cache?.r;
+  const soma=(r?.atrasados||[]).filter(x=>m.has(x.titulo_id)).reduce((s,x)=>s+Number(x.saldo||0),0);
+  const el=document.getElementById('cxAtrConta'); if(el) el.textContent=m.size?`${m.size} marcado${m.size>1?'s':''} · ${brl0(soma)}`:'Nenhum título marcado'; }
+function abaAtrasadosCx(r){
+  const m=CX.marcados, f=CX.filtro, lista=r.atrasados||[];
+  const n=k=>lista.filter(x=>cxPertence(x,k)).length;
+  const pill=x=>x.decisao?pillJ(CX_TRIAGEM[x.decisao]||x.decisao,CX_DEC_COR[x.decisao]||'#888')+(x.nova_data?` <span class="mut">${dBR(x.nova_data).slice(0,5)}</span>`:''):pillJ('Sem decisão','var(--quente)');
+  const cols=[['',x=>`<input type="checkbox" class="cxAtrChk" data-id="${x.titulo_id}"${m.has(x.titulo_id)?' checked':''} style="width:20px;height:20px">`,{csv:x=>''}],
+    ['Loja',x=>esc(lojaCodJ(x.loja))],['Nome',x=>esc(x.nome||'')],['Conta',x=>esc(x.plano_nome||'')],['Vencimento',x=>dBR(x.vencimento)],
+    ['Dias',x=>`<span class="${x.dias>30?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Valor',x=>`<b>${brl0(x.saldo)}</b>`,{r:1,csv:x=>nCsv(x.saldo)}],
+    ['Decisão',x=>pill(x),{csv:x=>CX_TRIAGEM[x.decisao]||'sem decisão'}],['Nota',x=>esc(x.nota||'')]];
+  return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">Atrasados a pagar · ${milCmp(r.kpi.atrasado_pagar)}</h3>
+      <span class="chave">${CX_FILTROS.map(([k,t])=>`<button class="${f===k?'on':''}" data-cxfil="${k}">${t} (${n(k)})</button>`).join('')}</span></div>
+    <div class="linha" style="margin-top:10px;align-items:flex-end">
+      <div style="min-width:210px"><label style="margin-top:0">Decisão para os marcados</label><select id="cxAtrDec"><option value="">Escolha…</option>
+        <option value="pagar_em">Pagar em</option><option value="renegociado">Renegociado (1ª parcela em)</option><option value="em_disputa">Em disputa</option>
+        <option value="nao_e_divida">Não é dívida (corrigir no Santri)</option><option value="para_diretoria">Para a diretoria</option></select></div>
+      <div id="cxAtrDataBox" class="hide"><label style="margin-top:0">Data</label><input type="date" id="cxAtrData"></div>
+      <div style="flex:1;min-width:160px"><label style="margin-top:0">Nota (opcional)</label><input id="cxAtrNota" placeholder="ex.: combinado com o fornecedor"></div>
+      <button id="cxAtrAplicar">Aplicar aos marcados</button><button class="sec" id="cxAtrTodos">Marcar os listados</button><button class="sec" id="cxAtrLimpa">Limpar</button></div>
+    <p class="mut" id="cxAtrConta" style="margin:6px 0 0">Nenhum título marcado</p></div>`+
+    listaJ('cxAtr',cols,lista.filter(x=>cxPertence(x,f)),
+      {vazio:'Nenhum atrasado nesta fila.',nota:'Sem decisão, o atrasado entra no caixa desta semana (pior caso). "Não é dívida" (adiantamento ou crédito lançado como conta a pagar): sai do caixa e fica para corrigir no Santri.'});
+}
+document.addEventListener('click',async e=>{
+  const t=e.target; if(!t.closest) return;
+  const fil=t.closest('[data-cxfil]'); if(fil){ CX.filtro=fil.dataset.cxfil; return telaCaixaJ(true); }
+  const tr=t.closest('#lj_cxAtr tr');
+  if(tr&&!t.closest('input,select,button,a')){ const c=tr.querySelector('.cxAtrChk'); if(c){ c.checked=!c.checked; c.dispatchEvent(new Event('change',{bubbles:true})); } return; }
+  if(t.id==='cxAtrTodos'){ const r=CX.cache?.r; if(!r) return; cxAtrFiltrados(r).forEach(x=>CX.marcados.add(x.titulo_id)); document.querySelectorAll('#lj_cxAtr .cxAtrChk').forEach(c=>c.checked=true); return cxAtrMarcados(); }
+  if(t.id==='cxAtrLimpa'){ CX.marcados.clear(); document.querySelectorAll('#lj_cxAtr .cxAtrChk').forEach(c=>c.checked=false); return cxAtrMarcados(); }
+  if(t.id==='cxAtrAplicar'){
+    const ids=[...CX.marcados], dec=$('#cxAtrDec').value, data=$('#cxAtrData').value;
+    if(!ids.length) return toast('Marque ao menos um título');
+    if(!dec) return toast('Escolha a decisão');
+    if(['pagar_em','renegociado'].includes(dec)&&!data) return toast('Informe a data');
+    try{ await rpcJ('tratar_titulos',{p_ids:ids,p_decisao:dec,p_nova_data:['pagar_em','renegociado'].includes(dec)?data:null,p_nota:$('#cxAtrNota').value.trim()||null}); }catch(err){ return erro(err); }
+    toast('Decisão gravada'); CX.marcados.clear(); CX.cache=null; telaCaixaJ();
+  }
+});
+document.addEventListener('change',e=>{
+  const s=e.target; if(!s.classList) return;
+  if(s.classList.contains('cxAtrChk')){ const id=+s.dataset.id; if(s.checked) CX.marcados.add(id); else CX.marcados.delete(id); return cxAtrMarcados(); }
+  if(s.id==='cxAtrDec') $('#cxAtrDataBox').classList.toggle('hide',!['pagar_em','renegociado'].includes(s.value));
+});
 function abaSaldosCx(r){ return ''; }
 async function detalheCx(grupo,col){
   let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados}); }catch(e){ return erro(e); }
