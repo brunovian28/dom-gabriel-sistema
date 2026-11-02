@@ -8,14 +8,21 @@ Objetivo: dar clareza à diretoria (inclusive aos diretores comerciais) sobre ma
 | # | Entrega | Situação |
 |---|---|---|
 | F1 | DRE gerencial (três momentos da venda) | **desenhada** — `docs/superpowers/specs/2026-11-01-dre-gerencial-design.md`. Não construir ainda |
-| F2 | Fluxo de caixa + contas a pagar e a receber | **próximo a desenhar** (conversa própria) |
+| F2 | Fluxo de caixa + contas a pagar e a receber | **desenhada** — `docs/superpowers/specs/2026-11-02-fluxo-caixa-design.md`. Não construir ainda |
 | F3 | Simulador de decisões | depois |
 | C1 | Discurso "juros pago pelo cliente" (tabela à vista × parcelas) | pequena |
+| B1 | Balanço gerencial (reaproveita saldos, títulos, dívidas da F2 + carteira e bens da F1 + estoque) | depois da F1 |
 | F4 | Visão do investidor (padrão de mercado) | depois do balanço |
 
-Ordem de construção proposta: **base comum** (classificação do plano de contas, unidades, cadastros de §7 da spec F1) → **F2 caixa** (a dor mais urgente) → **F1 DRE**. F1 e F2 usam a mesma base.
+Ordem de construção: **base comum** (classificação do plano de contas, status pago/aberto/vencido único, unidades) → **F2 caixa** (a dor mais urgente) → **F1 DRE** → **B1 balanço** → F4.
 
-Para a conversa da F2, já se sabe: fornecedor é pago à vista e é a primeira conta paga; cartão parcelado é antecipado (quase à vista); comissão e RT saem no mês seguinte ao fechamento (pode mudar para "após a 1ª parcela"); há impostos e contas em atraso; dívida com bancos, parcelamentos e empréstimos entre lojas/sócios e a Chapadão do Sul; a tela Compras já tem "Caixa para comprar · 30 dias" (`caixa_saldo`, `informar_saldo_caixa`); relatórios de contas a pagar/receber e baixas já são importados (`titulos_santri`, `baixas_santri`) mas estão parados em 16/10.
+### Tarefas do Bruno (fora do sistema, antes/durante a F2)
+1. Organizar e aprender a parametrizar a antecipação do cartão no Santri.
+2. Descobrir onde está lançada a comissão desde mar/2026 (paga sempre no mês seguinte, mas quase não aparece como título).
+3. Primeira carga do cadastro de dívidas (contratos, saldos, taxas).
+4. Definir o caixa mínimo de cada loja.
+5. Revisar o rascunho da classificação do plano de contas (a Claude prepara).
+6. Retomar a importação semanal (relatórios parados em 16/10).
 
 ## 1. Funil do cliente numa página só (ideia do Bruno, 20/10)
 Uma página à vista de todos com um card por cliente/pedido que anda sozinho da prospecção à entrega. No card: situação e datas importantes. No futuro, cada mudança de coluna dispara ou sugere uma mensagem ao cliente.
