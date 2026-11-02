@@ -166,7 +166,7 @@ function montarMenu(){ iniciarLojaVer();
   const P=EU.papel, dir=ehDirecao(), cmp=veCompras();
   const itens=SETORES.includes(P)?[['#/pedidos','Pedidos'],...(veRecebimentosJ()?[['#/recebimentos','Recebimentos']]:[]),['#/compras','Compras'],['#/chegada','Chegada'],['#/entregas','Entregas'],['#/estoque','Estoque'],...(veFinanceiroJ()?[['#/financeiro','Financeiro']]:[]),['#/agenda','Agenda'],['#/capas','Capas']]
     :[...(dir?[['#/direcao','Direção']]:[]),['#/capas','Capas'],['#/nova','+ Nova capa'],['#/painel','Painel'],...(veOrcamentosJ()?[['#/orcamentos','Orçamentos']]:[]),['#/pedidos','Pedidos'],...(veRecebimentosJ()?[['#/recebimentos','Recebimentos']]:[]),...(cmp?[['#/compras','Compras'],['#/chegada','Chegada'],['#/entregas','Entregas'],['#/estoque','Estoque']]:[]),...(veFinanceiroJ()?[['#/financeiro','Financeiro']]:[]),['#/agenda','Agenda'],['#/profissionais','Profissionais']];
-  if(dir) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
+  if(dir) itens.push(['#/usuarios','Usuários'],['#/parametros','Parâmetros'],['#/plano-contas','Plano de contas'],['#/condicoes','Condições de pagamento'],['#/conferencia-st','Conferência de ST']);
   if(ehDirecao()||EU.importa_tudo||['gerente','compras','financeiro','logistica'].includes(EU.papel)) itens.push(['importadora.html','Importadora']);
   const seletor=veDuasLojas()?`<div style="padding:12px"><label style="color:#cfd8e3">Ver loja</label><select id="lojaVer" style="margin-top:4px"><option value="0">Ambas (PVA + RV)</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>`
     :`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
@@ -183,6 +183,7 @@ function rota(){
   if(h==='#/nova') return novaCapa();
   if(h==='#/usuarios') return telaUsuarios();
   if(h==='#/parametros') return telaParametros();
+  if(h==='#/plano-contas') return telaPlanoContasJ();
   if(h==='#/conferencia-st') return telaConfST();
   if(h==='#/profissionais') return telaProfissionais();
   if(h==='#/condicoes') return telaCondicoes();
@@ -2125,6 +2126,29 @@ const lojaSufixo=()=>{const l=lojaJ(); return l?' · '+esc(lojaCodJ(l)):' · PVA
 const semDadosJ=(rel)=>`<div class="aviso">Ainda não há dados de <b>${rel}</b>. Importe o relatório na <a href="importadora.html">Importadora</a>.</div>`;
 const fonteJ=(t,rel)=>`<span class="mut">${rel}: ${t?dataHoraJ(t):'nunca importado'}</span>`;
 const pillJ=(t,cor)=>`<span class="pill" style="background:${cor};white-space:nowrap">${esc(t)}</span>`;
+
+// ---------- PLANO DE CONTAS (classificação do caixa) ----------
+const GRUPOS_CX=[['fornecedor','Fornecedor'],['pessoal','Pessoal'],['impostos','Impostos'],['comissoes_rt','Comissões e RT'],['divida','Dívida'],['fixo','Custo fixo'],['outros','Outros'],['fora','Fora do caixa']];
+async function telaPlanoContasJ(){
+  if(!ehDirecao()) return telaLista();
+  $('#conteudo').innerHTML=cabJ('Plano de contas')+'<p class="mut">Carregando…</p>';
+  let rows; try{ rows=await rpcJ('lista_plano_contas'); }catch(e){ return erroTelaJ('Plano de contas',e); }
+  const aRevisar=rows.filter(r=>!r.revisado).length;
+  const cols=[['Código',r=>esc(r.plano_codigo)],['Conta',r=>esc(r.plano_nome||'')],['Títulos 12m',r=>r.titulos_12m,{r:true}],
+    ['Grupo do caixa',r=>`<select class="pcGrupo" data-c="${esc(r.plano_codigo)}" style="width:auto;padding:3px 6px;font-size:12px">${GRUPOS_CX.map(([k,t])=>`<option value="${k}"${r.grupo_caixa===k?' selected':''}>${t}</option>`).join('')}</select>`,{csv:r=>(GRUPOS_CX.find(g=>g[0]===r.grupo_caixa)||[])[1]||''}],
+    ['Fixa recorrente',r=>`<input type="checkbox" class="pcFixa" data-c="${esc(r.plano_codigo)}"${r.fixa?' checked':''}>`,{csv:r=>r.fixa?'sim':'não'}],
+    ['Revisado',r=>r.revisado?'✓':'',{csv:r=>r.revisado?'sim':'não'}]];
+  $('#conteudo').innerHTML=cabJ('Plano de contas')+`<div class="kpis" style="margin-bottom:12px">${kpiJ(aRevisar,'contas a revisar',aRevisar>0)}${kpiJ(rows.length,'contas no total')}</div>`
+    +listaJ('planoContas',cols,rows,{nota:'Rascunho feito pela Claude a partir do nome da conta. Revise as contas mais usadas primeiro.'});
+}
+document.addEventListener('change',async e=>{
+  const s=e.target; if(!s.classList||!(s.classList.contains('pcGrupo')||s.classList.contains('pcFixa'))) return;
+  const tr=s.closest('tr'), cod=s.dataset.c;
+  const grupo=tr.querySelector('.pcGrupo').value, fixa=tr.querySelector('.pcFixa').checked;
+  try{ await rpcJ('salvar_classe_conta',{p_codigo:cod,p_grupo:grupo,p_fixa:fixa}); }catch(err){ return erro(err); }
+  const l=J.listas.planoContas; if(l){ const x=l.rows.find(r=>r.plano_codigo===cod); if(x){ x.grupo_caixa=grupo; x.fixa=fixa; x.revisado=true; } }
+  tr.lastElementChild.textContent='✓'; toast('Conta classificada');
+});
 
 // ---------- DIREÇÃO ----------
 async function telaDirecao(){

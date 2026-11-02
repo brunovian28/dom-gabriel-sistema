@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 40** (a próxima é a 41 — avise antes de criar).
+**Última migration: 41** (a próxima é a 42 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 02/11/2026 | Bruno (Claude) | Caixa (F2) · base comum: classificação do plano de contas por grupo do caixa, status único do título (pago/aberto/vencido) e tela Plano de contas na Direção | 41 | ver git log |
 | 01/11/2026 | Bruno (Claude) | Segurança: funções do banco (SECURITY DEFINER) não podem mais ser chamadas sem login (anon perde EXECUTE; funções novas já nascem fechadas). Spec da F1 (DRE gerencial) em `docs/superpowers/specs/` | 40 | ver git log |
 | 20/10/2026 | Bruno (Claude) | CLAUDE.md: regra "faça, não mostre" (sem copiar e colar código) | — | ver git log |
 | 20/10/2026 | Bruno (Claude) | Docs para trabalho a dois: `CLAUDE.md`, `docs/HANDOFF.md`, `docs/ALTERACOES.md`, `docs/PROXIMOS_PASSOS.md`; migrations 26–39 copiadas para `sql/` | — | ver git log |
