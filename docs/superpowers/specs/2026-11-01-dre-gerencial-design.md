@@ -120,6 +120,13 @@ Rota nova na área da direção. Padrão do sistema: números que norteiam no to
 6. **Tabela DRE**: colunas Estimado na venda · Hoje · Diferença · PVA · RV · Quirinópolis; ◐ marca linha com parte estimada.
 7. **Ponte gerencial → contábil:** receita vendida no mês − vendido e ainda não entregue + entregue no mês de vendas antigas = receita contábil. A carteira (vendido e não entregue) é o elo e alimenta o balanço depois.
 
+8. **Contas não pagas à vista (decisão 02/11):** a DRE é por competência — despesa entra no mês dela, paga ou não —, mas cada valor mostra a situação de pagamento:
+   - 🟢 pago · 🟡 em aberto no prazo · 🔴 vencido e não pago (linha pintada de vermelho, ex.: "Aluguel R$ X — R$ Y vencido").
+   - Rodapé da DRE: "Despesas deste mês ainda não pagas: R$ Z (R$ W vencido)" — é a ponte com o caixa (F2).
+   - Mês antigo com conta ainda aberta continua vermelho até a baixa (imposto atrasado não some de vista).
+   - Clique abre os títulos: fornecedor, vencimento, dias de atraso.
+   - Fonte: `titulos_santri` (vencimento) + `baixas_santri` (pagamento). Status pago/aberto/vencido é o **mesmo** usado na tela de contas a pagar da F2 — uma regra só, na base comum. Depende das baixas a pagar importadas em dia.
+
 **Tudo abre:** cada linha desce em níveis (grupo → conta → títulos; ou linha → vendas, com o momento de cada uma e link para o pedido).
 
 Esboço aprovado: `.superpowers/brainstorm/` na pasta do Bruno (`dre-momentos.html`), fora do repositório.
