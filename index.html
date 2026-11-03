@@ -77,7 +77,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
 #conteudo{min-width:0}
 .chave{display:inline-flex}.chave button{border-radius:0;padding:6px 10px;font-size:13px}.chave button:first-child{border-radius:8px 0 0 8px}.chave button:last-child{border-radius:0 8px 8px 0}.chave button:not(.on){background:#fff;color:var(--navy);border:1px solid var(--navy)}
 .cxBar{fill:var(--ok)}.cxBar.warn{fill:var(--morna)}.cxBar.neg{fill:var(--quente)}.cxBar.sem{fill:#9aa5b1}.cxMin{stroke:var(--quente);stroke-width:1.5;stroke-dasharray:5 4}
-#cxTabela td,#cxTabela th{white-space:nowrap}.cxCel{cursor:pointer;text-decoration:underline dotted}.cxCel:hover{background:#eef3f9}#cxTabela td:first-child,#cxTabela th:first-child{position:sticky;left:0;background:#fff}
+#cxTabela td,#cxTabela th{white-space:nowrap}.cxDivLinha{stroke:var(--navy);stroke-width:2}
+.cxCel{cursor:pointer;text-decoration:underline dotted}.cxCel:hover{background:#eef3f9}#cxTabela td:first-child,#cxTabela th:first-child{position:sticky;left:0;background:#fff}
 @media (max-width:800px){.cxDet{display:none}}
 </style>
 </head>
@@ -2120,8 +2121,8 @@ const pillJ=(t,cor)=>`<span class="pill" style="background:${cor};white-space:no
 
 // ---------- CAIXA ----------
 const CX={cache:null,atrasados:'triagem',vendas:'media',entrada:null,visao:'semanas',cols:[],filtro:'todos',marcados:new Set()};
-const CX_SAIDAS=['fornecedor','pessoal','impostos','comissoes_rt','divida','fixo','outros'];
-const CX_ENTRADAS=[['clientes','Clientes'],['vendas_futuras','Vendas futuras'],['outros_entrada','Outras entradas']];
+const CX_SAIDAS=['fornecedor','pessoal','impostos','comissoes_rt','divida','entre_lojas','fixo','outros'];
+const CX_ENTRADAS=[['clientes','Clientes'],['vendas_futuras','Vendas futuras'],['entre_lojas','Entre lojas'],['outros_entrada','Outras entradas']];
 const CX_VENDAS=[['media','Média 6 meses'],['meta','Meta'],['zero','Sem vendas novas']];
 const CX_TRIAGEM={pagar_em:'Pagar em',renegociado:'Renegociado',em_disputa:'Em disputa',nao_e_divida:'Não é dívida',para_diretoria:'Para a diretoria',prometeu:'Prometeu pagar',negociando:'Negociando',perdido:'Perdido'};
 const nomeGrupoCx=g=>(CX_ENTRADAS.find(x=>x[0]===g)||GRUPOS_CX.find(x=>x[0]===g)||[g,g])[1];
@@ -2164,7 +2165,7 @@ function abaProjecaoCx(r){
     ${graficoSaldoCx(per,minimo,informado)}
     <p class="mut" style="margin:2px 0 8px">${informado?`<span style="color:var(--ok)">■</span> acima do mínimo · <span style="color:var(--morna)">■</span> abaixo do mínimo · <span style="color:var(--quente)">■</span> negativo · linha tracejada = caixa mínimo ${milCmp(minimo)}`:'Barras cinza: acumulado sem o saldo.'}</p>
     ${tabela}
-    <p class="mut">◐ = inclui valor estimado. Lançado: o que está no Santri. Estimado: custo fixo ainda não lançado (média de 6 meses menos o que já foi lançado no mês), vendas futuras (média de 6 meses ou meta) com o recebimento no ritmo dos últimos 6 meses, o custo dessas vendas, e RT dos arquitetos e impostos das vendas pagos no mês seguinte. A comissão dos vendedores já está no salário (custo fixo). Cartão não entra no a receber porque já foi antecipado. Parcelas de dívida fora do Santri ainda não entram. Clique num valor para ver os títulos.</p>
+    <p class="mut">◐ = inclui valor estimado. Lançado: o que está no Santri. Estimado: custo fixo ainda não lançado (média de 6 meses menos o que já foi lançado no mês), vendas futuras (média de 6 meses ou meta) com o recebimento no ritmo dos últimos 6 meses, o custo dessas vendas, e RT dos arquitetos e impostos das vendas pagos no mês seguinte. A comissão dos vendedores já está no salário (custo fixo). Cartão não entra no a receber porque já foi antecipado. Parcelas de dívida fora do Santri entram como estimado (◐). Entre lojas some no Total. Clique num valor para ver os títulos.</p>
     ${(r.perfil||[]).map(x=>`<p class="mut" style="margin:2px 0">${esc(lojaCodJ(x.loja))}: venda média ${brl0(x.venda_media_mes)} por mês (${x.ini.slice(5,7)}/${x.ini.slice(2,4)} a ${x.fim.slice(5,7)}/${x.fim.slice(2,4)}), ${Math.round(Number(x.receb0)*100)}% recebido na semana da venda.</p>`).join('')}</div>`;
 }
 // Aba "Atrasados a pagar": triagem em lote (a decisão de cada título alimenta a projeção)
@@ -2285,6 +2286,96 @@ document.addEventListener('change',async e=>{
   try{ await rpcJ('salvar_parametros_caixa',{p_loja:+s.dataset.l,p_caixa_minimo:v}); }catch(err){ return erro(err); }
   toast('Caixa mínimo salvo'); CX.cache=null; telaCaixaJ();
 });
+
+// Aba "Dívidas": contratos, curva da dívida caindo, títulos sem contrato e códigos das lojas no Santri
+const CX_TIPOS_DIV=[['banco','Banco'],['imposto','Parcelamento de imposto'],['socio','Sócio'],['entre_lojas','Entre lojas'],['chapadao','Chapadão do Sul'],['outro','Outro']];
+const tipoDivCx=t=>(CX_TIPOS_DIV.find(x=>x[0]===t)||[t,t])[1];
+const mesAnoCx=d=>d?d.slice(5,7)+'/'+d.slice(0,4):'—';
+function graficoDividaCx(curva){
+  const n=(curva||[]).length; if(!n) return '';
+  const W=720,H=210,pl=8,pr=8,pt=24,pb=26, vals=curva.map(c=>Number(c.saldo)||0), hi=Math.max(1,...vals);
+  const x=i=>pl+(n===1?0:i*(W-pl-pr)/(n-1)), y=v=>pt+(H-pt-pb)*(1-v/hi);
+  const linha='M'+curva.map((c,i)=>`${x(i).toFixed(1)},${y(vals[i]).toFixed(1)}`).join(' L');
+  const area=`${linha} L${x(n-1).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  const anos=curva.map((c,i)=>(i===0||c.mes.slice(5,7)==='01')?`<text x="${x(i).toFixed(1)}" y="${H-8}" text-anchor="${i===0?'start':'middle'}" font-size="10" fill="#6b7684">${c.mes.slice(0,4)}</text>`:'').join('');
+  return `<svg id="cxDivGrafico" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Dívida total mês a mês"><path d="${area}" fill="rgba(31,58,95,.12)" stroke="none"/><path class="cxDivLinha" d="${linha}" fill="none"/>${anos}`+
+    `<text x="${pl}" y="14" font-size="11" fill="#1F3A5F">hoje ${milCmp(vals[0])}</text><text x="${W-pr}" y="14" text-anchor="end" font-size="11" fill="#1F3A5F">acaba em ${mesAnoCx(curva[n-1].mes)}</text></svg>`;
+}
+async function abaDividasCx(lj){
+  if(!CX.div||CX.div.lj!==lj){ try{ CX.div={lj,r:await rpcJ('tela_dividas',{p_loja:lj})}; }catch(e){ return `<div class="erro">Não consegui carregar as dívidas: ${esc(e.message||e)}</div>`; } }
+  const d=CX.div.r, cs=d.contratos||[], sem=d.sem_contrato||[];
+  const cols=[['Credor',c=>`<b data-cxdivid="${c.id}">${esc(c.credor)}</b>${c.entre_lojas?` <span class="mut">→ ${esc(lojaCodJ(c.outra_loja))}</span>`:''}${c.origem==='renegociacao'?' <span class="mut">(renegociação)</span>':''}${c.filtro_repetido?'<div class="atras" style="font-size:12px">mesmo filtro de outro contrato</div>':''}`,{csv:c=>c.credor}],
+    ['Tipo',c=>esc(tipoDivCx(c.tipo))],['Loja',c=>esc(lojaCodJ(c.loja))],
+    ['Saldo',c=>`${c.saldo_estimado?'≈ ':''}<b>${brl0(c.saldo)}</b>`,{r:1,csv:c=>nCsv(c.saldo)}],
+    ['Taxa',c=>c.taxa_mes==null?'—':nfJ(c.taxa_mes)+'% a.m.',{r:1}],['Parcela',c=>c.parcela==null?'—':brl0(c.parcela),{r:1,csv:c=>nCsv(c.parcela)}],
+    ['Faltam',c=>c.faltam??0,{r:1}],['Acaba em',c=>mesAnoCx(c.acaba_em)],
+    ['No Santri',c=>c.modo==='santri'?'todas':(c.parcelas_santri>0?`${c.parcelas_santri} de ${c.parcelas_santri+c.parcelas_fora}`:'não')]];
+  const cad=ehDirecao()?`<div class="card"><h3>Códigos das lojas no Santri</h3><p class="mut">O código do cadastro de cada loja no Santri (o que aparece como credor ou cliente nas contas da outra loja). Separe vários por vírgula. É assim que o sistema reconhece o que é entre lojas.</p>
+    ${(d.cadastros||[]).map(x=>`<label>${esc(lojaCodJ(x.loja))}</label><input class="cxCadIn" data-l="${x.loja}" value="${esc((x.cadastros_santri||[]).join(', '))}" placeholder="ex.: 39">`).join('')}</div>`:'';
+  return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">Dívida total ${milCmp(d.total)} · parcela média ${milCmp(d.parcela_media_mes)} por mês</h3><button id="cxDivNovo">Novo contrato</button></div>
+      ${graficoDividaCx(d.curva)}</div>`+
+    listaJ('cxDiv',cols,cs,{vazio:'Nenhum contrato cadastrado. Use "Novo contrato" ou "Criar contrato" nas contas abaixo.',nota:'Saldo: o informado no contrato ou, sem ele, a soma das parcelas que faltam (≈). A curva desconta as parcelas e soma os juros da taxa. Parcela que já está no contas a pagar do Santri não entra duas vezes no caixa. Entre lojas: aparece em cada loja e some no Total. Clique num contrato para editar.'})+
+    `<div class="card" id="cxSemContrato"><h3>Sem contrato no Santri</h3><p class="mut">Contas do grupo Dívida abertas no Santri que ainda não têm contrato. Entram na dívida total pelo saldo em aberto. Crie o contrato para dar nome, saldo e prazo.</p>
+      <div class="tbl"><table><tr><th>Loja</th><th>Credor</th><th>Conta</th><th style="text-align:right">Parcelas</th><th style="text-align:right">Saldo</th><th>Última</th><th></th></tr>
+      ${sem.map((x,i)=>`<tr><td>${esc(lojaCodJ(x.loja))}</td><td>${esc(x.nome||'')}${x.entre_lojas?' <span class="mut">(entre lojas)</span>':''}</td><td>${esc(x.plano_nome||'')}</td><td style="text-align:right">${x.parcelas}</td><td style="text-align:right"><b>${brl0(x.saldo)}</b></td><td>${mesAnoCx(x.ultima)}</td><td style="text-align:right"><button class="link" data-cxsem="${i}">Criar contrato</button></td></tr>`).join('')||'<tr><td colspan="7" class="mut">Nada sem contrato.</td></tr>'}</table></div></div>`+cad;
+}
+function modalDividaCx(c,pre){
+  const d=CX.div?.r||{}, lojas=(d.lojas&&d.lojas.length)?d.lojas:[lojaJ()||EU.loja_id], v=c||pre||{}, num=x=>x==null?'':String(x).replace('.',',');
+  const optL=(sel)=>lojas.map(l=>`<option value="${l}"${+sel===l?' selected':''}>${esc(lojaCodJ(l))}</option>`).join('');
+  $('#modal').innerHTML=`<div class="modal"><div class="card" style="max-width:560px"><h3>${c?'Contrato de dívida':'Novo contrato de dívida'}</h3>
+    <label>Credor</label><input id="cxDivCredor" value="${esc(v.credor||'')}" data-id="${c?c.id:''}">
+    <div class="g2"><div><label>Tipo</label><select id="cxDivTipo">${CX_TIPOS_DIV.map(([k,t])=>`<option value="${k}"${(v.tipo||'banco')===k?' selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>Loja devedora</label><select id="cxDivLoja">${optL(v.loja_id??v.loja)}</select></div></div>
+    <div id="cxDivOutraBox" class="${v.tipo==='entre_lojas'?'':'hide'}"><label>Loja credora</label><select id="cxDivOutra">${optL(v.outra_loja)}</select></div>
+    <div class="g2"><div><label>Saldo devedor hoje</label><input id="cxDivSaldo" inputmode="decimal" value="${num(v.saldo_informado)}" placeholder="ex.: 250.000,00"></div>
+      <div><label>Taxa % ao mês (opcional)</label><input id="cxDivTaxa" inputmode="decimal" value="${num(v.taxa_mes)}" placeholder="ex.: 1,2"></div></div>
+    <label>Como estão as parcelas</label><select id="cxDivModo"><option value="fixas"${(v.modo||'fixas')==='fixas'?' selected':''}>Parcelas fixas (eu informo)</option><option value="santri"${v.modo==='santri'?' selected':''}>Já está no Santri</option></select>
+    <div id="cxDivFixas" class="${v.modo==='santri'?'hide':''}"><div class="g2"><div><label>Valor da parcela</label><input id="cxDivParcela" inputmode="decimal" value="${num(v.parcela)}" placeholder="ex.: 1.500,00"></div>
+      <div><label>1º vencimento</label><input type="date" id="cxDivPrimeiro" value="${esc(v.primeiro_venc||'')}"></div></div>
+      <label>Número de parcelas</label><input type="number" min="1" id="cxDivN" value="${v.n_parcelas??''}"></div>
+    <details ${v.santri_cadastro||v.modo==='santri'?'open':''} style="margin-top:8px"><summary><b>Ligar ao Santri</b></summary>
+      <p class="mut">Com o código do credor, o sistema reconhece as parcelas que já estão no contas a pagar do Santri e não conta duas vezes.</p>
+      <label>Código do credor no Santri</label><input id="cxDivCad" value="${esc(v.santri_cadastro||'')}">
+      <label>Plano de contas (opcional)</label><input id="cxDivPlano" value="${esc(v.santri_plano||'')}">
+      <label>Documento começa com (opcional, separa dois contratos do mesmo credor)</label><input id="cxDivDoc" value="${esc(v.santri_doc_prefixo||'')}"></details>
+    <label>Observação</label><input id="cxDivObs" value="${esc(v.obs||'')}">
+    <div class="linha" style="margin-top:12px"><button id="cxDivSalvar">Salvar</button><button class="sec" id="cxDivX">Cancelar</button>${c?'<button class="del" id="cxDivDes">Desativar contrato</button>':''}</div></div></div>`;
+}
+document.addEventListener('click',async e=>{
+  const t=e.target; if(!t.closest) return; const d=CX.div?.r;
+  if(t.id==='cxDivX') return $('#modal').innerHTML='';
+  if(t.id==='cxDivNovo') return modalDividaCx(null,{loja_id:(d?.lojas||[])[0]});
+  const sem=t.closest('[data-cxsem]');
+  if(sem&&d){ const x=(d.sem_contrato||[])[+sem.dataset.cxsem]; if(x) modalDividaCx(null,{credor:x.nome,loja_id:x.loja,tipo:'banco',modo:'santri',santri_cadastro:x.cadastro}); return; }
+  const tr=t.closest('#lj_cxDiv tr');
+  if(tr&&!t.closest('input,button,a')){ const id=tr.querySelector('[data-cxdivid]')?.dataset.cxdivid; if(!id) return;
+    const {data,error}=await sb.from('dividas').select('*').eq('id',+id).maybeSingle(); if(error) return erro(error);
+    const c=data||(d?.contratos||[]).find(x=>x.id===+id); if(c) modalDividaCx({...c,id:+id}); return; }
+  if(t.id==='cxDivSalvar'){
+    const g=i=>$('#'+i).value.trim(), id=$('#cxDivCredor').dataset.id, tipo=g('cxDivTipo'), modo=g('cxDivModo');
+    if(!g('cxDivCredor')) return toast('Informe o credor');
+    const saldo=numCx(g('cxDivSaldo')), taxa=numCx(g('cxDivTaxa')), parc=numCx(g('cxDivParcela')), n=g('cxDivN')?parseInt(g('cxDivN'),10):null;
+    if([saldo,taxa,parc].some(v=>Number.isNaN(v))) return toast('Valor inválido: confira saldo, taxa e parcela');
+    const dados={credor:g('cxDivCredor'),tipo,loja_id:+g('cxDivLoja'),outra_loja:tipo==='entre_lojas'?+g('cxDivOutra'):null,modo,saldo_informado:saldo,saldo_data:saldo===null?null:(d?.hoje||hojeLocalJ()),taxa_mes:taxa,
+      santri_cadastro:g('cxDivCad')||null,santri_plano:g('cxDivPlano')||null,santri_doc_prefixo:g('cxDivDoc')||null,obs:g('cxDivObs')||null};
+    if(modo==='fixas'){ dados.parcela=parc; dados.primeiro_venc=g('cxDivPrimeiro')||null; dados.n_parcelas=n; }
+    try{ await rpcJ('salvar_divida',{p_id:id?+id:null,p_dados:dados}); }catch(err){ return erro(err); }
+    $('#modal').innerHTML=''; toast('Contrato salvo'); CX.cache=null; CX.div=null; return telaCaixaJ();
+  }
+  if(t.id==='cxDivDes'){ const id=$('#cxDivCredor').dataset.id; if(!id) return;
+    if(!confirm('Desativar este contrato? Ele deixa de entrar na dívida total e no caixa.')) return;
+    try{ await rpcJ('salvar_divida',{p_id:+id,p_dados:{ativo:false}}); }catch(err){ return erro(err); }
+    $('#modal').innerHTML=''; toast('Contrato desativado'); CX.cache=null; CX.div=null; return telaCaixaJ(); }
+});
+document.addEventListener('change',async e=>{
+  const s=e.target; if(!s.id&&!(s.classList&&s.classList.contains('cxCadIn'))) return;
+  if(s.id==='cxDivTipo') return $('#cxDivOutraBox').classList.toggle('hide',s.value!=='entre_lojas');
+  if(s.id==='cxDivModo') return $('#cxDivFixas').classList.toggle('hide',s.value!=='fixas');
+  if(s.classList.contains('cxCadIn')){
+    const cods=s.value.split(',').map(x=>x.trim()).filter(Boolean);
+    try{ await rpcJ('salvar_cadastros_loja',{p_loja:+s.dataset.l,p_cadastros:cods}); }catch(err){ return erro(err); }
+    toast('Códigos salvos'); CX.cache=null; CX.div=null; telaCaixaJ(); }
+});
 async function detalheCx(grupo,col){
   let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados,p_vendas:CX.vendas,p_entrada_pct:CX.entrada}); }catch(e){ return erro(e); }
   J.busca.cxDet='';
@@ -2298,7 +2389,7 @@ async function telaCaixaJ(usarCache){
   if(!veFinanceiroJ()) return telaLista();
   const lj=lojaJ();
   if(!usarCache||!CX.cache||CX.cache.lj!==lj||CX.cache.modo!==CX.atrasados||CX.cache.ven!==CX.vendas||CX.cache.ent!==CX.entrada){
-    $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo())+'<p class="mut">Carregando…</p>';
+    $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo())+'<p class="mut">Carregando…</p>'; CX.div=null;
     try{ CX.cache={lj,modo:CX.atrasados,ven:CX.vendas,ent:CX.entrada,r:await rpcJ('tela_caixa',{p_loja:lj,p_atrasados:CX.atrasados,p_vendas:CX.vendas,p_entrada_pct:CX.entrada})}; }catch(e){ return erroTelaJ('Caixa',e); }
   }
   const r=CX.cache.r, k=r.kpi, sd=r.saldo, hj=r.hoje, ab=J.aba.caixa||(J.aba.caixa='proj');
@@ -2318,17 +2409,18 @@ async function telaCaixaJ(usarCache){
         :indCmp('Primeira semana abaixo do mínimo','Nenhuma em 13 semanas',`mínimo ${milCmp(r.minimo)}`,{ok:true,aba:'proj'})}
     ${indCmp('Maior buraco · 13 semanas',milCmp(k.maior_buraco?.valor),`semana de ${dBR(k.maior_buraco?.ini).slice(0,5)}${sd.informado?'':' · sem o saldo das contas'}`,{alerta:sd.informado&&Number(k.maior_buraco?.valor)<0,aba:'proj'})}
     ${indCmp('Atrasado a pagar',milCmp(k.atrasado_pagar),`${milCmp(k.atrasado_nao_triado)} sem decisão`,{alerta:Number(k.atrasado_nao_triado)>0,ok:!Number(k.atrasado_pagar),aba:'atr'})}
+    ${indCmp('Dívida total',milCmp(k.divida?.total),`parcela média ${milCmp(k.divida?.parcela_media_mes)} por mês${Number(k.divida?.sem_contrato)>0?` · ${milCmp(k.divida.sem_contrato)} sem contrato`:''}`,{aba:'div'})}
   </div>`;
   const porLoja=(r.lojas||[]).length>1?`<div class="card" style="padding:8px 12px">${(r.por_loja||[]).map(x=>`<div class="linha" style="gap:14px"><b>${esc(lojaCodJ(x.loja))}</b>
     <span class="mut">saldo ${x.saldo_informado?milCmp(x.saldo_hoje):'não informado'}</span>
     <span class="mut">1ª abaixo do mínimo: ${!x.saldo_informado?'—':x.primeira_abaixo?dBR(x.primeira_abaixo.ini).slice(0,5):'nenhuma'}</span>
-    <span class="mut">maior buraco ${milCmp(x.maior_buraco?.valor)}</span><span class="mut">atrasado ${milCmp(x.atrasado_pagar)}</span></div>`).join('')}</div>`:'';
+    <span class="mut">maior buraco ${milCmp(x.maior_buraco?.valor)}</span><span class="mut">atrasado ${milCmp(x.atrasado_pagar)}</span><span class="mut">dívida ${milCmp(x.divida)}</span></div>`).join('')}</div>`:'';
   const chave=`<span class="chave" title="Como tratar as contas a pagar vencidas"><button class="${CX.atrasados==='triagem'?'on':''}" data-cxatr="triagem">Atrasados: seguir a triagem</button><button class="${CX.atrasados==='pagar_tudo'?'on':''}" data-cxatr="pagar_tudo">Pagar tudo agora</button></span>`;
   const chaveVen=`<span class="chave" title="De onde vem a venda dos próximos 12 meses">${CX_VENDAS.map(([k,t])=>`<button class="${CX.vendas===k?'on':''}" data-cxven="${k}">${t}</button>`).join('')}</span>
     <input id="cxEntrada" inputmode="decimal" placeholder="% à vista" title="Parte das vendas futuras recebida na semana da venda. Vazio = ritmo dos últimos 6 meses" value="${CX.entrada==null?'':CX.entrada}" style="width:96px;padding:6px">`;
-  const corpo=ab==='atr'?abaAtrasadosCx(r):ab==='sal'?abaSaldosCx(r):abaProjecaoCx(r);
+  const corpo=ab==='atr'?abaAtrasadosCx(r):ab==='sal'?abaSaldosCx(r):ab==='div'?await abaDividasCx(lj):abaProjecaoCx(r);
   $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo(),fonteJ(r.atualizado.titulos,'Contas a pagar/receber')+chave+chaveVen)+avisos.map(a=>`<div class="aviso">${esc(a)}</div>`).join('')+topo+porLoja+
-    abasJ('caixa',[['proj','Projeção'],['atr','Atrasados a pagar'],['sal','Saldos']],()=>telaCaixaJ(true))+corpo;
+    abasJ('caixa',[['proj','Projeção'],['atr','Atrasados a pagar'],['div','Dívidas'],['sal','Saldos']],()=>telaCaixaJ(true))+corpo;
   document.querySelectorAll('[data-irc]').forEach(a=>a.onclick=()=>{ J.aba.caixa=a.dataset.irc; telaCaixaJ(true).then(()=>document.querySelector('.tabs')?.scrollIntoView({behavior:'smooth'})); });
   document.querySelectorAll('[data-cxatr]').forEach(b=>b.onclick=()=>{ CX.atrasados=b.dataset.cxatr; telaCaixaJ(); });
   document.querySelectorAll('[data-cxvis]').forEach(b=>b.onclick=()=>{ CX.visao=b.dataset.cxvis; telaCaixaJ(true); });

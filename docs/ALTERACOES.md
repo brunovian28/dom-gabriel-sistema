@@ -6,6 +6,7 @@ Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para ba
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude) | Tela Caixa: Dívida total no topo, aba Dívidas com contratos, curva e sem contrato, códigos das lojas e linha Entre lojas | — | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 4: dívida total, curva da dívida e `tela_dividas`; atrasado do Total sem entre lojas | 55 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 3: Renegociado vira contrato com parcelas (`renegociar_titulos`), títulos antigos saem da projeção | 54 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 2: parcelas de dívida fora do Santri na projeção e entre lojas espelhado e fora do Total; códigos das lojas no Santri gravados | 53 | ver git log |
