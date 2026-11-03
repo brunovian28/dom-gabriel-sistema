@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 67** (a próxima é a 68 — avise antes de criar).
+**Última migration: 68e** (a próxima é a 69 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Opus) | Regra única "saiu = nota de remessa" nas telas: função `interno.entregas_nota` (68, 68b rápida), Pedidos passa a usá-la (resultado igual), tela Entregas refeita (pendentes, sem agendamento, pagas e pendentes, saíram no mês, manifesto para fechar, geradas sem nota; 68c e 68c2), bloco Entrega da Direção (68d) e Compras (68e: etapa 3 "No depósito" = Pronto para entregar da tela Pedidos, situação das vendas ligadas pela nota, sem misturar lojas). Antes, 3.718 entregas que já tinham saído apareciam como "aguardando carregamento" / "no depósito" (R$ 22,9 mi). Compras ficou mais rápida (2,0 → 1,1 s) | 68, 68b, 68c, 68c2, 68d, 68e | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Manual de uso: capítulo da tela Compras (`docs/manual/compras.md`). Achado ao escrever: a etapa "No depósito, aguardando o cliente" da tela Compras ainda conta todo manifesto aguardando carregamento (3.718 entregas), sem a regra de 30 dias da tela Pedidos | — | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Manual de uso começa em `docs/manual/` (índice + capítulo da tela Pedidos), escrito em linguagem de usuário para virar manual completo depois. Rodapé da tela Pedidos atualizado com a regra de "entregue" de hoje (remessa, entrega total, manifesto antigo, presumido de 60 dias). CLAUDE.md passa a pedir a atualização do capítulo quando a tela mudar | — | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Pedidos: nota de "Entregas agrupadas" (uma nota para várias ordens de entrega do mesmo cliente) passa a marcar as entregas certas: pelo nº do pedido na observação ou, sem ele, pelas entregas do mesmo cliente nos 30 dias antes da nota. Pedidos com remessa 505 → 549, em aberto 207 → 203 | 67 | ver git log |

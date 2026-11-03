@@ -35,6 +35,7 @@ Quem **marca a fila** ("já comprado", "saiu do estoque"…) e **anota o retorno
 | Compras | O que já foi comprado, de quem, e se já entrou |
 | Notas de entrada | Se a fábrica já faturou e se a mercadoria já chegou |
 | Gerenciamento de entregas | A situação da entrega ao cliente |
+| Notas fiscais emitidas | Se a entrega já saiu (nota de remessa) |
 | Estoque | Se a loja já tem o produto |
 
 No alto da tela aparece a data e a hora da última importação de cada um. Se estiver velha, a tela mostra o passado. A ligação entre uma venda e uma compra é **sugerida pelo produto** (mesmo código, ou, no revestimento, a mesma linha e marca), até o Santri trazer o número da venda no relatório de compras.
@@ -92,7 +93,7 @@ No alto, três etapas em sequência, do que já foi comprado:
 
 1. **Na fábrica:** compras sem nota. A fábrica ainda não faturou.
 2. **Faturada (fábrica ou transportadora):** a nota chegou e a mercadoria ainda não foi baixada no Santri. Está na fábrica ou na transportadora.
-3. **No depósito, aguardando o cliente:** entregas com manifesto aguardando carregamento. Clicar leva à tela Entregas.
+3. **No depósito, aguardando o cliente:** os pedidos "Pronto para entregar" da tela Pedidos, ou seja, a mercadoria já chegou e o Santri ainda tem entrega pendente. Mostra o valor, quantos pedidos e quantos estão sem previsão. Clicar abre a tela Pedidos já filtrada.
 
 Três listas:
 
@@ -166,8 +167,8 @@ O "Caixa para comprar" precisa do saldo informado. Informe em **Caixa → Saldos
 **O número de Falta comprar aqui é diferente do da tela Pedidos.**
 Esta tela olha só as vendas dos últimos 60 dias e inclui as que têm estoque na loja. As mais antigas ficam em **Corrigir → Venda paga sem compra +60 dias**. A tela Pedidos olha o último ano e já tira o que foi entregue.
 
-**A etapa "No depósito" mostra milhares de entregas.**
-Hoje ela conta todo manifesto "aguardando carregamento", inclusive os que já foram entregues e não foram fechados no Santri. Veja o capítulo de Pedidos sobre manifesto. Essa etapa ainda não segue a regra de 30 dias.
+**Os números de "No depósito" aqui e de "Pronto para entregar" em Pedidos são iguais?**
+Sim, é o mesmo cálculo. Entrega que já saiu é reconhecida pela nota fiscal de remessa, não pelo manifesto.
 
 **Na fábrica há muitas compras com mais de 60 dias.**
 Parte é compra antiga que nunca foi baixada no Santri. Baixe a planilha da lista e confira uma a uma com a fábrica.
