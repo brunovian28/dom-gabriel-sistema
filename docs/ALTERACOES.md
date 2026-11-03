@@ -6,6 +6,7 @@ Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para ba
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude) | Tela Caixa: chaves "Vendas futuras" e "% à vista", valores estimados marcados com ◐, linha Vendas futuras, detalhe com estimativas e dias de pagar a RT e os impostos. Fecha o plano 2 da F2 | — | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 4: `tela_caixa` e `caixa_detalhe` com as chaves de vendas futuras e % à vista (versões novas sem default, antigas viram atalho) | 50 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 3: vendas futuras com recebimento pelo perfil, custo das vendas, RT dos arquitetos e impostos das vendas, em `caixa_fluxo` (ainda não aparecem na tela) | 49, 49b | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 2: custo fixo recorrente estimado (média de 6 meses menos o lançado) em `caixa_fluxo` | 48 | ver git log |

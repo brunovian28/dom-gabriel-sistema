@@ -2119,9 +2119,10 @@ const fonteJ=(t,rel)=>`<span class="mut">${rel}: ${t?dataHoraJ(t):'nunca importa
 const pillJ=(t,cor)=>`<span class="pill" style="background:${cor};white-space:nowrap">${esc(t)}</span>`;
 
 // ---------- CAIXA ----------
-const CX={cache:null,atrasados:'triagem',visao:'semanas',cols:[],filtro:'todos',marcados:new Set()};
+const CX={cache:null,atrasados:'triagem',vendas:'media',entrada:null,visao:'semanas',cols:[],filtro:'todos',marcados:new Set()};
 const CX_SAIDAS=['fornecedor','pessoal','impostos','comissoes_rt','divida','fixo','outros'];
-const CX_ENTRADAS=[['clientes','Clientes'],['outros_entrada','Outras entradas']];
+const CX_ENTRADAS=[['clientes','Clientes'],['vendas_futuras','Vendas futuras'],['outros_entrada','Outras entradas']];
+const CX_VENDAS=[['media','Média 6 meses'],['meta','Meta'],['zero','Sem vendas novas']];
 const CX_TRIAGEM={pagar_em:'Pagar em',renegociado:'Renegociado',em_disputa:'Em disputa',nao_e_divida:'Não é dívida',para_diretoria:'Para a diretoria',prometeu:'Prometeu pagar',negociando:'Negociando',perdido:'Perdido'};
 const nomeGrupoCx=g=>(CX_ENTRADAS.find(x=>x[0]===g)||GRUPOS_CX.find(x=>x[0]===g)||[g,g])[1];
 const diasEntreCx=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
@@ -2147,7 +2148,8 @@ function abaProjecaoCx(r){
   CX.cols=cols;
   const lin=(rot,fn)=>`<tr><td style="white-space:nowrap">${rot}</td>${cols.map(fn).join('')}</tr>`;
   const cab=t=>`<tr><td colspan="${cols.length+1}" class="mut" style="background:#f7f8fa"><b>${t}</b></td></tr>`;
-  const cel=(g,i,v)=>v?`<td style="text-align:right" class="cxCel" data-g="${g}" data-i="${i}">${brl0(Math.abs(v))}</td>`:'<td style="text-align:right" class="mut">–</td>';
+  const cel=(g,i,v)=>{ if(!v) return '<td style="text-align:right" class="mut">–</td>'; const est=Number(cols[i].grupos_est?.[g])||0;
+    return `<td style="text-align:right" class="cxCel" data-g="${g}" data-i="${i}"${est?' title="inclui valor estimado"':''}>${brl0(Math.abs(v))}${est?' ◐':''}</td>`; };
   const tabela=`<div class="tbl"><table id="cxTabela"><thead><tr><th></th>${cols.map(c=>`<th class="cxCol" style="text-align:right">${c.rot}</th>`).join('')}</tr></thead><tbody>
     ${lin('Saldo inicial',c=>`<td style="text-align:right">${informado?brl0(c.ant):'—'}</td>`)}
     ${cab('Entra')}${CX_ENTRADAS.map(([g,n])=>lin(n,(c,i)=>cel(g,i,c.grupos[g]||0))).join('')}
@@ -2162,7 +2164,8 @@ function abaProjecaoCx(r){
     ${graficoSaldoCx(per,minimo,informado)}
     <p class="mut" style="margin:2px 0 8px">${informado?`<span style="color:var(--ok)">■</span> acima do mínimo · <span style="color:var(--morna)">■</span> abaixo do mínimo · <span style="color:var(--quente)">■</span> negativo · linha tracejada = caixa mínimo ${milCmp(minimo)}`:'Barras cinza: acumulado sem o saldo.'}</p>
     ${tabela}
-    <p class="mut">Projeção com o que está lançado no Santri. Ainda não entram: custo fixo que não foi lançado, vendas futuras e parcelas de dívida fora do Santri. Cartão não entra porque já foi antecipado. A receber vencido há mais de 60 dias só entra com promessa de pagamento. Clique num valor para ver os títulos.</p></div>`;
+    <p class="mut">◐ = inclui valor estimado. Lançado: o que está no Santri. Estimado: custo fixo ainda não lançado (média de 6 meses menos o que já foi lançado no mês), vendas futuras (média de 6 meses ou meta) com o recebimento no ritmo dos últimos 6 meses, o custo dessas vendas, e RT dos arquitetos e impostos das vendas pagos no mês seguinte. A comissão dos vendedores já está no salário (custo fixo). Cartão não entra no a receber porque já foi antecipado. Parcelas de dívida fora do Santri ainda não entram. Clique num valor para ver os títulos.</p>
+    ${(r.perfil||[]).map(x=>`<p class="mut" style="margin:2px 0">${esc(lojaCodJ(x.loja))}: venda média ${brl0(x.venda_media_mes)} por mês (${x.ini.slice(5,7)}/${x.ini.slice(2,4)} a ${x.fim.slice(5,7)}/${x.fim.slice(2,4)}), ${Math.round(Number(x.receb0)*100)}% recebido na semana da venda.</p>`).join('')}</div>`;
 }
 // Aba "Atrasados a pagar": triagem em lote (a decisão de cada título alimenta a projeção)
 const CX_FILTROS=[['todos','Todos'],['sem','Sem decisão'],['dir','Para a diretoria'],['disp','Em disputa']];
@@ -2222,7 +2225,9 @@ function abaSaldosCx(r){
   const blocos=(r.lojas||[]).map(l=>{
     const cs=contas.filter(c=>c.loja===l), pl=(r.por_loja||[]).find(x=>x.loja===l)||{}, total=cs.reduce((s,c)=>s+(Number(c.saldo)||0),0);
     return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">${esc(lojaCodJ(l))}</h3>
-        <div class="linha"><label style="margin:0">Caixa mínimo</label><input class="cxMinIn" data-l="${l}" inputmode="decimal" style="width:150px" value="${pl.minimo?Number(pl.minimo).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}" placeholder="ex.: 150.000,00"></div></div>
+        <div class="linha"><label style="margin:0">Caixa mínimo</label><input class="cxMinIn" data-l="${l}" inputmode="decimal" style="width:150px" value="${pl.minimo?Number(pl.minimo).toLocaleString('pt-BR',{minimumFractionDigits:2}):''}" placeholder="ex.: 150.000,00">
+          <label style="margin:0">Dia de pagar a RT</label><input type="number" min="1" max="28" class="cxDiaCom" data-l="${l}" style="width:70px" value="${pl.dia_comissao??10}">
+          <label style="margin:0">Dia dos impostos</label><input type="number" min="1" max="28" class="cxDiaImp" data-l="${l}" style="width:70px" value="${pl.dia_impostos??20}"></div></div>
       <div class="tbl"><table><tr><th>Banco</th><th>Conta</th><th style="text-align:right">Último saldo</th><th>Data</th><th></th></tr>
       ${cs.map(c=>{ const velho=c.data&&diasEntreCx(c.data,hj)>7;
         return `<tr class="cxConta" data-conta="${c.conta_id}"><td>${esc(c.banco)}</td><td>${esc(c.nome)}</td><td style="text-align:right">${c.saldo==null?'<span class="mut">sem saldo</span>':brl0(c.saldo)}</td>
@@ -2270,16 +2275,21 @@ document.addEventListener('click',async e=>{
     toast('Conta desativada'); CX.cache=null; telaCaixaJ(); }
 });
 document.addEventListener('change',async e=>{
-  const s=e.target; if(!s.classList||!s.classList.contains('cxMinIn')) return;
+  const s=e.target; if(s.classList&&(s.classList.contains('cxDiaCom')||s.classList.contains('cxDiaImp'))){
+    const l=+s.dataset.l, dc=+document.querySelector(`.cxDiaCom[data-l="${l}"]`).value, di=+document.querySelector(`.cxDiaImp[data-l="${l}"]`).value;
+    if(![dc,di].every(d=>Number.isInteger(d)&&d>=1&&d<=28)) return toast('Dia inválido: use de 1 a 28');
+    try{ await rpcJ('salvar_datas_caixa',{p_loja:l,p_dia_comissao:dc,p_dia_impostos:di}); }catch(err){ return erro(err); }
+    toast('Dias salvos'); CX.cache=null; return telaCaixaJ(); }
+  if(!s.classList||!s.classList.contains('cxMinIn')) return;
   const v=numCx(s.value); if(v===null||isNaN(v)||v<0) return toast('Valor inválido: '+s.value);
   try{ await rpcJ('salvar_parametros_caixa',{p_loja:+s.dataset.l,p_caixa_minimo:v}); }catch(err){ return erro(err); }
   toast('Caixa mínimo salvo'); CX.cache=null; telaCaixaJ();
 });
 async function detalheCx(grupo,col){
-  let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados}); }catch(e){ return erro(e); }
+  let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados,p_vendas:CX.vendas,p_entrada_pct:CX.entrada}); }catch(e){ return erro(e); }
   J.busca.cxDet='';
   const cols=[['Loja',x=>esc(lojaCodJ(x.loja))],['Nome',x=>esc(x.nome||'')],['Conta',x=>esc(x.plano_nome||'')],['Vencimento',x=>dBR(x.vencimento)],['Cai em',x=>dBR(x.data)],
-    ['Valor',x=>brl0(Math.abs(x.valor)),{r:1,csv:x=>nCsv(Math.abs(x.valor))}],['Triagem',x=>x.decisao?esc(CX_TRIAGEM[x.decisao]||x.decisao):(x.vencido?'<span class="atras">sem decisão</span>':'')]];
+    ['Valor',x=>brl0(Math.abs(x.valor)),{r:1,csv:x=>nCsv(Math.abs(x.valor))}],['Triagem',x=>x.titulo_id==null?'<span class="mut">estimado</span>':x.decisao?esc(CX_TRIAGEM[x.decisao]||x.decisao):(x.vencido?'<span class="atras">sem decisão</span>':'')]];
   $('#modal').innerHTML=`<div class="modal"><div class="card" style="max-width:1000px"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">${esc(nomeGrupoCx(grupo))} · ${esc(col.rot)}</h3><button class="sec" id="cxDetX">Fechar</button></div>
     ${listaJ('cxDet',cols,rows,{vazio:'Nenhum título neste período.'})}</div></div>`;
   $('#cxDetX').onclick=()=>$('#modal').innerHTML='';
@@ -2287,9 +2297,9 @@ async function detalheCx(grupo,col){
 async function telaCaixaJ(usarCache){
   if(!veFinanceiroJ()) return telaLista();
   const lj=lojaJ();
-  if(!usarCache||!CX.cache||CX.cache.lj!==lj||CX.cache.modo!==CX.atrasados){
+  if(!usarCache||!CX.cache||CX.cache.lj!==lj||CX.cache.modo!==CX.atrasados||CX.cache.ven!==CX.vendas||CX.cache.ent!==CX.entrada){
     $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo())+'<p class="mut">Carregando…</p>';
-    try{ CX.cache={lj,modo:CX.atrasados,r:await rpcJ('tela_caixa',{p_loja:lj,p_atrasados:CX.atrasados})}; }catch(e){ return erroTelaJ('Caixa',e); }
+    try{ CX.cache={lj,modo:CX.atrasados,ven:CX.vendas,ent:CX.entrada,r:await rpcJ('tela_caixa',{p_loja:lj,p_atrasados:CX.atrasados,p_vendas:CX.vendas,p_entrada_pct:CX.entrada})}; }catch(e){ return erroTelaJ('Caixa',e); }
   }
   const r=CX.cache.r, k=r.kpi, sd=r.saldo, hj=r.hoje, ab=J.aba.caixa||(J.aba.caixa='proj');
   const avisos=[], dTit=r.atualizado.titulos?diasEntreCx(r.atualizado.titulos.slice(0,10),hj):null;
@@ -2314,12 +2324,18 @@ async function telaCaixaJ(usarCache){
     <span class="mut">1ª abaixo do mínimo: ${!x.saldo_informado?'—':x.primeira_abaixo?dBR(x.primeira_abaixo.ini).slice(0,5):'nenhuma'}</span>
     <span class="mut">maior buraco ${milCmp(x.maior_buraco?.valor)}</span><span class="mut">atrasado ${milCmp(x.atrasado_pagar)}</span></div>`).join('')}</div>`:'';
   const chave=`<span class="chave" title="Como tratar as contas a pagar vencidas"><button class="${CX.atrasados==='triagem'?'on':''}" data-cxatr="triagem">Atrasados: seguir a triagem</button><button class="${CX.atrasados==='pagar_tudo'?'on':''}" data-cxatr="pagar_tudo">Pagar tudo agora</button></span>`;
+  const chaveVen=`<span class="chave" title="De onde vem a venda dos próximos 12 meses">${CX_VENDAS.map(([k,t])=>`<button class="${CX.vendas===k?'on':''}" data-cxven="${k}">${t}</button>`).join('')}</span>
+    <input id="cxEntrada" inputmode="decimal" placeholder="% à vista" title="Parte das vendas futuras recebida na semana da venda. Vazio = ritmo dos últimos 6 meses" value="${CX.entrada==null?'':CX.entrada}" style="width:96px;padding:6px">`;
   const corpo=ab==='atr'?abaAtrasadosCx(r):ab==='sal'?abaSaldosCx(r):abaProjecaoCx(r);
-  $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo(),fonteJ(r.atualizado.titulos,'Contas a pagar/receber')+chave)+avisos.map(a=>`<div class="aviso">${esc(a)}</div>`).join('')+topo+porLoja+
+  $('#conteudo').innerHTML=cabJ('Caixa'+lojaSufixo(),fonteJ(r.atualizado.titulos,'Contas a pagar/receber')+chave+chaveVen)+avisos.map(a=>`<div class="aviso">${esc(a)}</div>`).join('')+topo+porLoja+
     abasJ('caixa',[['proj','Projeção'],['atr','Atrasados a pagar'],['sal','Saldos']],()=>telaCaixaJ(true))+corpo;
   document.querySelectorAll('[data-irc]').forEach(a=>a.onclick=()=>{ J.aba.caixa=a.dataset.irc; telaCaixaJ(true).then(()=>document.querySelector('.tabs')?.scrollIntoView({behavior:'smooth'})); });
   document.querySelectorAll('[data-cxatr]').forEach(b=>b.onclick=()=>{ CX.atrasados=b.dataset.cxatr; telaCaixaJ(); });
   document.querySelectorAll('[data-cxvis]').forEach(b=>b.onclick=()=>{ CX.visao=b.dataset.cxvis; telaCaixaJ(true); });
+  document.querySelectorAll('[data-cxven]').forEach(b=>b.onclick=()=>{ CX.vendas=b.dataset.cxven; telaCaixaJ(); });
+  $('#cxEntrada').onchange=e=>{ const v=numCx(e.target.value);
+    if(v!==null&&(isNaN(v)||v<0||v>100)){ toast('Percentual à vista: use de 0 a 100'); e.target.value=CX.entrada==null?'':CX.entrada; return; }
+    CX.entrada=v; telaCaixaJ(); };
   document.querySelectorAll('.cxCel').forEach(td=>td.onclick=()=>detalheCx(td.dataset.g,CX.cols[+td.dataset.i]));
 }
 

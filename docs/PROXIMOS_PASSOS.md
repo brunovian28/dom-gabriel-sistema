@@ -8,7 +8,7 @@ Objetivo: dar clareza à diretoria (inclusive aos diretores comerciais) sobre ma
 | # | Entrega | Situação |
 |---|---|---|
 | F1 | DRE gerencial (três momentos da venda) | **desenhada** — `docs/superpowers/specs/2026-11-01-dre-gerencial-design.md`. Não construir ainda |
-| F2 | Fluxo de caixa + contas a pagar e a receber | **plano 1 construído (02/11/2026):** base comum, saldos por conta, projeção do lançado, triagem dos atrasados (tela `#/caixa`). Faltam os planos 2–4 (fixo recorrente + vendas futuras · dívidas · a receber/cobrança, foto semanal, Compras lendo a projeção). Desenho: `docs/superpowers/specs/2026-11-02-fluxo-caixa-design.md` |
+| F2 | Fluxo de caixa + contas a pagar e a receber | **planos 1 e 2 construídos (03/11/2026):** base comum, saldos por conta, projeção do lançado, triagem dos atrasados, custo fixo recorrente, vendas futuras com custo, RT e impostos das vendas, chaves "Vendas futuras" e "% à vista" (tela `#/caixa`). Faltam os planos 3–4 (dívidas · a receber/cobrança, foto semanal, Compras lendo a projeção). Desenho: `docs/superpowers/specs/2026-11-02-fluxo-caixa-design.md` |
 | F3 | Simulador de decisões | depois |
 | C1 | Discurso "juros pago pelo cliente" (tabela à vista × parcelas) | pequena |
 | B1 | Balanço gerencial (reaproveita saldos, títulos, dívidas da F2 + carteira e bens da F1 + estoque) | depois da F1 |
