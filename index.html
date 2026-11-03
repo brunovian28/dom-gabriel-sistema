@@ -328,6 +328,10 @@ function ligarCampos(root){
         if(f==='motivo_perda'&&v&&CAPA.c.status==='Perdida'){ const {data:ab}=await sb.from('orcamentos').update({status:'Perdido',motivo_perda:v}).eq('capa_id',CAPA.c.id).eq('status','Em negociação').select('id');
           if(ab&&ab.length) toast(ab.length+' orçamento(s) em negociação marcados como perdidos'); } }
       toast('Salvo ✓'); if(CAPA&&$('#resumo')) atualizarResumo();
+      if(t==='pedidos'&&(f==='previsao_entrega'||f==='data_cliente_precisa')){ // espelha as duas datas na tela Pedidos
+        const {data:pp,error:e3}=await sb.from('pedidos').select('loja_id,numero_santri,previsao_entrega,data_cliente_precisa').eq('id',id).single();
+        if(e3||!pp) return erro(e3||{message:'Não achei o pedido para sincronizar as datas'});
+        await sincronizarDatasPedido(pp.loja_id,pp.numero_santri,pp.previsao_entrega,pp.data_cliente_precisa); }
     });
   });
 }
@@ -1144,6 +1148,8 @@ async function revisarPedido(r,file,santri){
   const cond=PED.conds.find(x=>normCond(x.nome)===normCond(c.condicao_pagamento))||null;
   if(!cond&&!santri) avisos.push(`A condição "${esc(c.condicao_pagamento||'')}" não está no cadastro de condições. Escolha a mais parecida abaixo.`);
   PED.novo={file,r,orc,santri,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
+  let pre=null; // datas e formas de pagamento que o Santri já tem (só para pedido que vem do Santri; se falhar, o formulário abre em branco)
+  if(santri){ try{ pre=await rpcJ('dados_lancar_pedido',{p_loja:CAPA.c.loja_id,p_numero:String(santri.numero).replace(/\D/g,'')}); }catch(e){ console.error(e); toast('Não consegui buscar as datas do Santri: '+(e.message||e)); } }
   const bands=[...new Set(PED.tx.map(t=>t.bandeira))];
   const tot=r.totais||{};
   $('#pedRev').innerHTML=`<div style="margin-top:12px">
@@ -1151,15 +1157,15 @@ async function revisarPedido(r,file,santri){
     <div class="kpis"><div class="kpi"><b>${esc(c.numero)}</b><span>pedido${orc?' · orçamento ligado':''}</span></div><div class="kpi"><b>${dBR(c.data_fechamento)}</b><span>fechamento</span></div>
       <div class="kpi"><b>${brl(r.total_geral)}</b><span>total do pedido${tot['Valor desconto']?' (desconto '+brl(tot['Valor desconto'])+')':''}</span></div><div class="kpi"><b>${r.itens.length}</b><span>itens</span></div></div>
     <p class="mut">Cliente: ${esc(c.cliente||'')} · Vendedor Santri: ${esc(c.vendedor||'')}${c.observacao?' · Obs.: '+esc(c.observacao):''}</p>
-    <div class="g3"><div><label>Condição de pagamento (Santri)</label><select id="pCond"><option value="">—</option>${PED.conds.map(x=>`<option value="${x.codigo}" ${cond&&cond.codigo===x.codigo?'selected':''}>${esc(x.nome)}</option>`).join('')}</select></div>
+    <div class="g3"><div><label>Condição de pagamento (Santri)</label><select id="pCond"><option value="">—</option>${PED.conds.map(x=>`<option value="${x.codigo}" ${cond&&cond.codigo===x.codigo?'selected':''}>${esc(x.nome)}</option>`).join('')}</select>${pre&&pre.formas?`<div class="mut" id="pFormasDica" style="font-size:12px;margin-top:4px">Pagamentos já recebidos no Santri: ${esc(pre.formas)}</div>`:''}</div>
       <div id="pBandBox"><label>Bandeira / tabela</label><select id="pBand"><option value="">—</option>${bands.map(b=>`<option>${esc(b)}</option>`).join('')}</select></div>
       <div id="pModBox"><label>Modalidade</label><select id="pMod"></select></div>
       <div id="pEntBox"><label>Entrada (R$)</label><input id="pEnt" inputmode="decimal" value="0"></div>
       <div id="pTxBox"><label>Custo financeiro (% do valor a prazo)</label><input id="pTx" inputmode="decimal" placeholder="ex.: 2,5"></div>
       <div style="align-self:end"><label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pArq" style="width:auto" ${PED.temArq?'checked':''}> Tem arquiteto (RT)</label>
         <label style="display:flex;gap:6px;align-items:center;color:var(--txt)"><input type="checkbox" id="pGoy" style="width:auto" ${PED.temArq?'checked':''}> Goyases / Metropolitano</label></div></div>
-    <div class="g3" style="margin-top:6px"><div><label>Data que o cliente precisa * (limite)</label><input type="date" id="pPrecisa"></div>
-      <div><label>Previsão de entrega</label><input type="date" id="pPrev"></div></div>
+    <div class="g3" style="margin-top:6px"><div><label>Data que o cliente precisa * (limite)</label><input type="date" id="pPrecisa" value="${esc(pre?.precisa||'')}"></div>
+      <div><label>Previsão de entrega</label><input type="date" id="pPrev" value="${esc(pre?.previsao_sistema||pre?.previsao_santri||'')}"></div></div>
     <div id="pCondObs"></div><div id="pRes" style="margin-top:10px"></div>
     <div class="linha" style="margin-top:10px"><button class="gold" id="pSalvar">Confirmar pedido</button><button class="sec" id="pCanc">Cancelar</button></div></div>`;
   const pn=v=>{v=String(v||'').trim(); if(!v) return null; if(v.includes(',')) v=v.replace(/\./g,'').replace(',','.'); const n=Number(v.replace('%','')); return isNaN(n)?null:n;};
@@ -1194,6 +1200,11 @@ async function recalcPed(){
      <div class="kpi"><b style="color:${cor}">${pct(r.mc_pct)}</b><span>MC %</span></div><div class="kpi"><b>${pct(r.taxa_cartao)}</b><span>custo financeiro (${brl(r.custo_financeiro)})</span></div>${comp}</div>
      ${(r.avisos||[]).map(a=>`<div class="aviso">${esc(a)}</div>`).join('')}`;
 }
+// Espelha as datas do pedido em pedido_datas (tela Pedidos). Roda DEPOIS de gravar em pedidos; se falhar, avisa e não desfaz nada. Devolve o texto do erro ou null.
+async function sincronizarDatasPedido(loja,numeroSantri,prev,precisa,avisar=true){
+  try{ await rpcJ('salvar_datas_pedido',{p_loja:loja,p_numero:String(numeroSantri||'').replace(/\./g,''),p_previsao:prev||null,p_precisa:precisa||null}); return null; }
+  catch(e){ console.error(e); const m='Datas não sincronizadas com a tela Pedidos: '+(e.message||e); if(avisar) toast(m); return m; }
+}
 async function salvarPedido(){
   const n=PED.novo; if(!n?.res) return toast('Aguarde o cálculo');
   const {cd,ent}=entradaPed(); if(!cd&&!confirm('Salvar sem condição de pagamento cadastrada?')) return;
@@ -1220,7 +1231,8 @@ async function salvarPedido(){
   await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',
     resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||(cd?.nome)||''}${n.file?'':' (dados do Santri)'}`});
   await vincularClienteSantri(c); atualizarNomeCapa();
-  toast('Pedido lançado — complete a capa do pedido'); PED.novo=null; PED.abrir=p.id; const keep=p.id; await abaPed(); if(!$('#capa_'+keep).innerHTML) capaPedido(keep); if(typeof atualizarResumo==='function') atualizarResumo();
+  const falhaSync=await sincronizarDatasPedido(CAPA.c.loja_id,c.numero,prev,precisa,false);
+  toast('Pedido lançado — complete a capa do pedido'+(falhaSync?'. Atenção: '+falhaSync:'')); PED.novo=null; PED.abrir=p.id; const keep=p.id; await abaPed(); if(!$('#capa_'+keep).innerHTML) capaPedido(keep); if(typeof atualizarResumo==='function') atualizarResumo();
 }
 
 // ---------- Capa do pedido (digital) ----------
