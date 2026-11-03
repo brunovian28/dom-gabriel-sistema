@@ -1455,7 +1455,7 @@ async function telaPedidos(usarCache){
     <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pdEntregues" style="width:auto"${PDF_.entregues?' checked':''}> Mostrar entregues (30 dias)</label></div>
     <div id="pdLista" style="margin-top:8px">${pdLista()}</div>
     <p class="mut">Etapa = onde está a mercadoria do pedido, pelos relatórios do Santri (compra, nota de entrada, entrega). Saindo = manifesto aguardando carregamento há até 30 dias. "Atualize no Santri" = a previsão que está aqui é diferente da do Santri: corrija lá também.</p>
-    <p class="mut">Entregue presumido: pedido fora do relatório de pendentes do Santri, com toda a mercadoria já chegada e fechamento há mais de 60 dias, conta como entregue. Manifesto não é processo padrão: o certo é fechar até 30 dias depois da nota fiscal; depois disso aparece "Fechar manifesto".</p></div>`;
+    <p class="mut">Entregue: a nota fiscal de remessa saiu (data em "Saiu"), ou o Santri registra entrega total, ou o manifesto está aberto há mais de 30 dias. Pedido fora das pendentes e sem nenhum registro de entrega no Santri vira entregue presumido depois de 60 dias do fechamento. Manifesto não é processo padrão: o certo é fechar até 30 dias depois da nota fiscal; depois disso aparece "Fechar manifesto".</p></div>`;
   document.querySelectorAll('[data-et]').forEach(k=>k.onclick=()=>{PDF_.etapa=PDF_.etapa===k.dataset.et?null:k.dataset.et; PDF_.editando=null; telaPedidos(true);});
   document.querySelectorAll('[data-al]').forEach(k=>k.onclick=()=>{PDF_.alerta=PDF_.alerta===k.dataset.al?null:k.dataset.al; PDF_.editando=null; telaPedidos(true);});
   $('#pdBusca').oninput=e=>{PDF_.busca=e.target.value; $('#pdLista').innerHTML=pdLista(); pdLigar();};

@@ -14,6 +14,7 @@ Duas pessoas trabalham neste repositório, cada uma com a própria Claude: **Bru
 3. Acrescentar uma linha **no topo** da tabela de `docs/ALTERACOES.md`: data · quem · o que mudou · migration · commit.
 4. Se mudou regra, tabela, RPC ou tela: atualizar a seção certa de `docs/HANDOFF.md`.
 5. SQL novo vai para `sql/migration_NN_nome.sql`.
+6. Se mudou o que a pessoa vê ou faz numa tela, atualizar o capítulo dela em `docs/manual/` (e a data de "Última revisão" no topo do capítulo). O manual fala a língua de quem usa a tela, sem nome de tabela nem de função.
 
 ## Regras
 - **Faça, não mostre.** Edite os arquivos no repositório, teste, faça commit e push você mesma; mude o banco pelo conector do Supabase (`apply_migration`). Nunca peça para a pessoa copiar e colar código ou SQL. Se faltar permissão (GitHub sem escrita, Supabase sem a organização), diga exatamente qual conector reautorizar.
