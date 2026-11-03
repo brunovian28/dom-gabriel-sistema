@@ -72,7 +72,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
 .erro{background:#fdecea;color:#b00;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
 #avisoRel{background:#fdecea;color:#b00;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 #avisoRel a{color:#b00;font-weight:bold}#avisoRel button{background:none;border:0;color:#b00;font-size:18px;cursor:pointer;padding:0 4px}
-.topoSetor.peq{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.topoSetor{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:6px 0 12px}
+.topoSetor.peq{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.ind .v.atras{color:var(--quente)}.pdAcMob{display:none}@media (max-width:700px){.topoSetor.peq{grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 6px}.topoSetor.peq .ind,.topoSetor.peq .etapa{padding:6px 7px}.topoSetor.peq .t{font-size:9.5px;line-height:1.2;min-height:23px}.topoSetor.peq .v{font-size:18px;margin:1px 0}.topoSetor.peq .s{font-size:10px}.pdAcMob{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.pdAcDesk{display:none}}.topoSetor{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:6px 0 12px}
 .ind,.etapa{background:#fff;border:1px solid var(--bd);border-left:4px solid var(--navy2);border-radius:10px;padding:10px 12px;cursor:pointer}
 .ind.alerta,.etapa.alerta{border-left-color:var(--quente)}.ind.ok{border-left-color:var(--ok)}.ind:hover,.etapa:hover{border-color:var(--navy2)}
 .ind .t,.etapa .t{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
@@ -1364,11 +1364,11 @@ function pdLinha(p,r){
   const merc=`<b>${esc(PD_ETAPA_NOME[p.etapa]||p.etapa)}</b><div class="mut" style="font-size:12px">${p.chegou||0} de ${p.itens||0} itens chegaram</div>`;
   const prev=p.previsao?`<div class="${al.includes('previsao_vencida')?'atras':''}">${dBR(p.previsao).slice(0,5)} <span class="mut" style="font-size:12px">(${p.prev_sistema&&p.previsao===p.prev_sistema?'sistema':'Santri'})</span></div>`:'';
   const ent=`${esc(PD_ENTREGA_TXT[p.entrega]||p.entrega||'')}${p.etapa==='entregue'&&p.entregue_em?' '+dBR(p.entregue_em).slice(0,5):''}${prev}`;
-  const dias=p.dias??pdDias(r.hoje,p.fechamento);
-  const acao=`<button class="sec" data-datas="${p.venda_id}">Datas</button>${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
-  let h=`<tr data-v="${esc(p.numero)}"><td style="white-space:nowrap"><b>${esc(fmtNum(p.numero))}</b> <span class="mut">${esc(l)}</span></td><td>${esc(p.cliente||'')}</td><td>${esc((p.vendedor||'').split(' ')[0])}</td>
+  const dias=p.dias??pdDias(r.hoje||hojeLocalJ(),p.fechamento);
+  const acaoH=`<button class="sec" data-datas="${p.venda_id}">Datas</button>${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
+  let h=`<tr data-v="${esc(p.numero)}"><td style="white-space:nowrap"><b>${esc(fmtNum(p.numero))}</b> <span class="mut">${esc(l)}</span><div class="pdAcMob">${acaoH}</div></td><td>${esc(p.cliente||'')}</td><td>${esc((p.vendedor||'').split(' ')[0])}</td>
     <td>${dBR(p.fechamento)}</td><td class="${dias>60&&p.etapa!=='entregue'?'atras':''}">${dias}</td><td>${pgto}</td><td>${merc}</td><td>${ent}</td><td>${p.precisa?dBR(p.precisa).slice(0,5):'<span class="mut">—</span>'}</td>
-    <td>${al.map(a=>`<div style="margin:1px 0">${pillJ(PD_ALERTA_TXT[a]||a,PD_ALERTA_COR[a]||'#888')}</div>`).join('')}</td><td><div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">${acao}</div></td></tr>`;
+    <td>${al.map(a=>`<div style="margin:1px 0">${pillJ(PD_ALERTA_TXT[a]||a,PD_ALERTA_COR[a]||'#888')}</div>`).join('')}</td><td class="pdAcDesk"><div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">${acaoH}</div></td></tr>`;
   if(PDF_.editando===p.venda_id) h+=`<tr class="pdEdit"><td colspan="11" style="background:#f7f9fc"><div style="position:sticky;left:0;width:min(100%,calc(100vw - 56px));box-sizing:border-box">
     <div class="linha"><div style="flex:1 1 140px"><label>Previsão de entrega</label><input type="date" id="pdPrev" value="${esc(p.prev_sistema||p.previsao||'')}"></div>
     <div style="flex:1 1 140px"><label>Cliente precisa até</label><input type="date" id="pdPrec" value="${esc(p.precisa||'')}"></div></div>
@@ -1384,7 +1384,7 @@ function pdLista(){
   if(busca) lista=lista.filter(p=>[p.numero,fmtNum(p.numero),p.cliente,p.vendedor].some(v=>String(v||'').toUpperCase().includes(busca)));
   lista=lista.slice().sort((a,b)=>(b.dias||0)-(a.dias||0));
   const max=500, vis=lista.slice(0,max);
-  return `<div class="tbl"><table id="pdTabela"><tr><th>Pedido</th><th>Cliente</th><th>Vendedor</th><th>Fechamento</th><th>Dias</th><th>Pagamento</th><th>Mercadoria</th><th>Entrega</th><th>Cliente precisa</th><th>Alertas</th><th></th></tr>
+  return `<div class="tbl"><table id="pdTabela"><tr><th>Pedido</th><th>Cliente</th><th>Vendedor</th><th>Fechamento</th><th>Dias</th><th>Pagamento</th><th>Mercadoria</th><th>Entrega</th><th>Cliente precisa</th><th>Alertas</th><th class="pdAcDesk"></th></tr>
    ${vis.map(p=>pdLinha(p,r)).join('')||'<tr><td colspan="11" class="mut">Nenhum pedido.</td></tr>'}</table></div>
    ${lista.length>max?`<p class="mut">Mostrando ${max} de ${lista.length}. Use a busca ou um filtro.</p>`:`<p class="mut">${lista.length} pedido(s).</p>`}`;
 }
@@ -1417,6 +1417,7 @@ async function abrirParaLancar(id){
 }
 async function telaPedidos(usarCache){
   const lj=lojaJ();
+  if(!usarCache) PDF_.editando=null;
   if(!usarCache||!PDC||PDC.lj!==lj){
     $('#conteudo').innerHTML=cabJ('Pedidos e mercadoria')+'<p class="mut">Carregando…</p>';
     try{ PDC={lj,r:await rpcJ('tela_pedidos',{p_loja:lj||0})}; }catch(e){ return erroTelaJ('Pedidos e mercadoria',e); }
@@ -2763,18 +2764,6 @@ async function telaFinanceiroJ(){
 }
 
 // situação do Santri (pago / entregue) na lista de pedidos
-async function situacaoSantriPedidos(numeros){
-  if(!numeros.length) return {};
-  const {data,error}=await sb.rpc('situacao_santri_pedidos',{p_numeros:numeros}); if(error){ console.error(error); return {}; }
-  return data||{};
-}
-function selosSantri(s){
-  if(!s) return '<span class="mut">—</span>';
-  const p=s.valor?Math.round(100*Math.min(s.pago,s.valor)/s.valor):null;
-  const pg=p==null?'':p>=98?pillJ('pago','var(--ok)'):p>0?pillJ('pago '+p+'%','var(--morna)'):pillJ('sem pagamento','var(--quente)');
-  const en=!s.entregas?'':s.entregues===s.entregas?pillJ('entregue','var(--ok)'):s.aguardando?pillJ('aguardando carregamento','var(--fria)'):pillJ(`${s.entregues}/${s.entregas} entregues`,'var(--morna)');
-  return pg+' '+en;
-}
 
 </script>
 </body>
