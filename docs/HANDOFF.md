@@ -27,7 +27,7 @@ Na pasta do PC do Bruno o sistema se chama `sistema_dom_gabriel.html` (= `index.
 - Desde a migration 40, o papel `anon` não executa funções do schema `public` (e as novas já nascem sem EXECUTE para anon). Função nova que a tela chama: `grant execute ... to authenticated`.
 - Vendedor não vê Formação de Preço (ST, créditos, custo comercial), compras nem financeiro.
 
-## Importadora (11 relatórios do Santri)
+## Importadora (12 relatórios do Santri)
 Padrão de todos: leitor JS confere com os totais e filtros do rodapé do relatório → tabela `*_staging` → prévia (RPC `previa_importacao_*`) → gravar sem DELETE (RPC `aplicar_importacao_*`, guarda eventos do que mudou, registro que sumiu vira `ativo=false`) → a Importadora limpa a staging → histórico em `importacoes`. Catálogo `relatorios_rotina` (filtros, setores, prazo); `status_relatorios()` alimenta o aviso de relatório atrasado.
 
 | Relatório | Tabelas |
@@ -43,6 +43,7 @@ Padrão de todos: leitor JS confere com os totais e filtros do rodapé do relat�
 | Estoque por local (PVA_/RV_) | `estoque_foto` |
 | Contas a pagar / a receber | `titulos_santri` (foto atual = `interno.titulos_ultima_importacao(lado)`) |
 | DRE (PVA_/RV_) | `dre_santri` |
+| Notas fiscais emitidas (Relação de Notas Fiscais, sintético) | `notas_saida`, `notas_saida_eventos` (novo/alterou/sumiu/voltou, com `antes` jsonb), `notas_saida_staging`. RPCs `previa_importacao_notas_saida` e `aplicar_importacao_notas_saida` (migration 63). Chave `(loja_id, cod_nota)`. Período do arquivo = menor e maior emissão do arquivo **por loja** (loja que não veio não é tocada). Remessa = tipo `Entregas`/`Entregas agrupadas`, `cod_movimento` = `entregas_santri.entrega`. Setor `logistica` |
 
 Detalhes úteis: venda direta = comissão de venda direta > 0; `pedido_numero` das baixas a receber vem do campo Documento (`13152/1-3`, `CAR…-ORC13152/…`); "Entrega total" = entrega concluída; Data de entrega do Santri = data em que a entrega foi gerada (não a real); tipo de nota pelo CFOP (`interno.tipo_entrada`: revenda, uso_consumo, amostra_bonificacao, reposicao, outras).
 
