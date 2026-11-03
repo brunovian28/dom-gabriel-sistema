@@ -56,8 +56,10 @@ Falta decidir: quem vê (todos? vendedor só os dele?), prazos de cada coluna, c
 3. **Cliente precisa (data de solicitação):** X dias antes, tarefa "confirmar com o cliente" (confirmado / adiou com nova data e motivo / cancelou). Só trazer da fábrica/transportadora com data confirmada. Falta decidir: quem liga (vendedor ou pessoa fixa) e onde mora a data (previsão de entrega do item no Santri ou capa do pedido no sistema).
 4. **Produção na fábrica:** carteira das fábricas (Deca: prazo ATP; Portinari: data prazo/status). Precisa do nº do pedido no fornecedor na compra (só PVA preenche).
 5. **Chegada na loja:** previsto = produção + trânsito; realizado = baixa da nota.
-6. **Entrega ao cliente:** previsto = data confirmada; realizado = baixa do manifesto.
+6. **Entrega ao cliente:** previsto = data confirmada; realizado = hoje não é confiável (o manifesto não é processo padrão, ver HANDOFF › Decisões). Futuro: o app de entrega (item 8).
 7. **Feedback:** entrega + ~5 dias, pós-venda.
+
+8. **App de entrega no celular (ideia do Bruno, 03/11/2026):** a logística emite a NF de entrega no Santri e importa o relatório de notas fiscais na Importadora, o que já cria a entrega numa página feita para celular. O entregador marca ali as entregas que fez (data real). Dá para controlar quem fez o frete, quantos fretes e o custo. Depois de uns meses a logística fecha o manifesto no Santri e o sistema confere os dois. Precisa: leitor do relatório de NF de saída do Santri (ainda não importado), tela mobile para o entregador (login simples), e cadastro de entregadores/veículos. Fazer depois da tela Pedidos automática.
 
 Princípio: toda data tem dono, previsto e realizado.
 
