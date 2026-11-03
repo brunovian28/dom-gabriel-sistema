@@ -1382,7 +1382,7 @@ function pdLinha(p,r){
   const pgto=pag>=100?pillJ('pago','var(--ok)'):pag>0?pillJ('pago '+Math.round(pag)+'%','var(--morna)'):pillJ('sem pagamento','var(--quente)');
   const merc=`<b>${esc(PD_ETAPA_NOME[p.etapa]||p.etapa)}</b><div class="mut" style="font-size:12px">${p.chegou||0} de ${p.itens||0} itens chegaram</div>`;
   const prev=p.previsao?`<div class="${al.includes('previsao_vencida')?'atras':''}">${dBR(p.previsao).slice(0,5)} <span class="mut" style="font-size:12px">(${p.prev_sistema&&p.previsao===p.prev_sistema?'sistema':'Santri'})</span></div>`:'';
-  const ent=`${esc(PD_ENTREGA_TXT[p.entrega]||p.entrega||'')}${p.etapa==='entregue'&&p.entregue_em?' '+dBR(p.entregue_em).slice(0,5):''}${prev}`;
+  const ent=`${esc(PD_ENTREGA_TXT[p.entrega]||p.entrega||'')}${p.etapa==='entregue'&&p.entregue_em&&!p.remessa_em?' '+dBR(p.entregue_em).slice(0,5):''}${p.remessa_em?`<div class="mut" style="font-size:12px">Saiu ${dBR(p.remessa_em).slice(0,5)}${p.remessa_nf?' · NF '+esc(p.remessa_nf):''}</div>`:''}${prev}`;
   const dias=p.dias??pdDias(r.hoje||hojeLocalJ(),p.fechamento);
   const acaoH=`${podeAlterarDatas()?`<button class="sec" data-datas="${p.venda_id}">Datas</button>`:''}${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
   let h=`<tr data-v="${esc(p.numero)}"><td style="white-space:nowrap"><b>${esc(fmtNum(p.numero))}</b> <span class="mut">${esc(l)}</span><div class="pdAcMob">${acaoH}</div></td><td>${esc(p.cliente||'')}</td><td>${esc((p.vendedor||'').split(' ')[0])}</td>

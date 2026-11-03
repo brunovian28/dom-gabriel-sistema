@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 63b** (a próxima é a 64 — avise antes de criar).
+**Última migration: 64** (a próxima é a 65 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: nota de remessa marca a entrega real. `tela_pedidos` liga `notas_saida` (Entregas/Entregas agrupadas, sem `Dev. por canc. de entrega`) às entregas do Santri: remessa fora das pendentes = entregue na data da emissão, remessa nas pendentes = parcial. JSON ganha `remessa_em` e `remessa_nf`, e a coluna Entrega mostra "Saiu dd/mm · NF n". Regras A/B/C só para pedido sem remessa. | 64 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Importadora: leitor da Relação de Notas Fiscais (sintético e analítico) com conferência por loja/tipo e prévia com avisos de remessa sem entrega e nota que sumiu. | — | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Notas fiscais de saída no banco: tabelas `notas_saida` (+ eventos e staging) e RPCs de prévia e aplicar da Importadora (relatório 12 "Notas fiscais emitidas", setor logística). Chave loja + código da nota, período de emissão por loja, nota que sumiu vira inativa, remessa liga a `entregas_santri`. Revisão (63b): as RPCs conferem de quem é a importação e o tipo, aplicar duas vezes não regrava, período deduplicado igual à prévia, anon sem acesso às tabelas. Leitor e tela vêm nas próximas tasks | 63, 63b | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Pedidos: "entregue presumido" (mais de 60 dias, nada no Santri) não exige mais a mercadoria completa. "Falta comprar" cai de 168 para 64 e os pedidos em aberto de 399 para 276. Pílula "Não lançado" sai das linhas (o botão Lançar já mostra), fica só o filtro no topo. Testes da tela e do Lançar passando | 62 | ver git log |
