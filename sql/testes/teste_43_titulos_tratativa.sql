@@ -41,6 +41,10 @@ begin
   msg := null;
   begin perform public.tratar_titulos(array[tp], 'inventada', null, null); exception when others then msg := sqlerrm; end;
   assert msg is not null, 'FALHOU: decisao desconhecida passou';
+  -- renegociado deixou de ser uma data: só pelo Renegociar (cria as parcelas), ver teste_54
+  msg := null;
+  begin perform public.tratar_titulos(array[tp], 'renegociado', '2026-11-20', null); exception when others then msg := sqlerrm; end;
+  assert msg = 'Use Renegociar, que cria as parcelas', 'FALHOU renegociado -> ' || coalesce(msg, 'sem erro');
   perform public.tratar_titulos(array[tr], 'perdido', null, null);
   assert (select decisao from public.titulos_tratativa where titulo_id = tr) = 'perdido', 'FALHOU: perdido no receber';
 
