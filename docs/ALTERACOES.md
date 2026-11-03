@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 55** (a próxima é a 56 — avise antes de criar).
+**Última migration: 56** (a próxima é a 57 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Opus) | Revisão do plano 3 da F2: parcela de renegociação só liga a título do Santri de valor parecido (compra nova do mesmo fornecedor fazia a parcela sumir do caixa) · contrato de renegociação desativado não volta (contaria em dobro) · editar contrato exige permissão na loja atual · renegociar título da outra loja cria contrato entre lojas | 56 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Tela Caixa: triagem "Renegociado" abre o contrato com parcelas. Fecha as Tasks 1 a 6 do plano 3 da F2 | — | ver git log |
 | 03/11/2026 | Bruno (Claude) | Tela Caixa: Dívida total no topo, aba Dívidas com contratos, curva e sem contrato, códigos das lojas e linha Entre lojas | — | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 4: dívida total, curva da dívida e `tela_dividas`; atrasado do Total sem entre lojas | 55 | ver git log |

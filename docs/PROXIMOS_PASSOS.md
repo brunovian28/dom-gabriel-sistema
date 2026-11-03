@@ -20,7 +20,7 @@ Ordem de construção: **base comum** (classificação do plano de contas, statu
 - Atrasado marcado "Não é dívida" some da lista e não há tela para desfazer nem para listar as tarefas "corrigir no Santri".
 - Conta bancária desativada não tem botão de reativar.
 - ~~Revisão da Claude Opus nas regras de dinheiro~~ feita em 02/11/2026 (migration 46: baixa parcial e saldo em dobro).
-- `statement_timeout 60s` dentro das funções do caixa não vale: o limite real é 8 s do papel `authenticated`. Hoje `tela_caixa(0)` leva ~2 s; medir de novo a cada plano.
+- `statement_timeout 60s` dentro das funções do caixa não vale: o limite real é 8 s do papel `authenticated`. Depois do plano 3, `tela_caixa(0)` leva ~4,3 s: `caixa_fluxo` (~1 s) roda três vezes (Total + cada loja). Saída quando passar de 5 s: calcular o fluxo uma vez para as duas lojas sem o filtro final e derivar o Total (sem `entre_lojas`) e cada loja (filtro por `loja_id`, espelhos incluídos) dessa mesma lista.
 
 ### Tarefas do Bruno (fora do sistema, antes/durante a F2)
 1. Organizar e aprender a parametrizar a antecipação do cartão no Santri.
