@@ -72,6 +72,8 @@ Detalhes úteis: venda direta = comissão de venda direta > 0; `pedido_numero` d
 - Front: estado `J`, helpers `kpiJ`, `listaJ`/`csvJ` (lista com busca e planilha), `abasJ`, `mesNavJ`, `rpcJ`; padrão por setor: `indCmp`, `.topoSetor`, `.fluxo/.etapa`, `.cxM`.
 
 ## Decisões (regras de negócio)
+- **Comissão dos vendedores é paga na folha** (Bruno, 02/11/2026): no Caixa ela já entra no custo fixo de salários. A estimativa sobre as vendas é só a RT dos arquitetos.
+- **Frete de compra não está no custo do Santri** (Bruno, 02/11/2026): no Caixa, custo das vendas futuras = custo de compra + frete.
 - **Saldo do caixa só por conta bancária** (02/11/2026, revisão do plano 1 da F2): o saldo da loja inteira (antigo botão da Compras) somava com as contas e dobrava o saldo.
 - **Título pago por baixa** (02/11/2026): vale só a baixa feita depois do dia da foto dos títulos. Baixa do mesmo dia da foto não conta (pior caso: o título segue a pagar até a próxima importação). Baixa parcial desconta do saldo.
 - Pedido do Santri é a verdade da venda; nº do pedido = nº do orçamento. Margem do mês = vendas do Santri pela data de fechamento + pedidos lançados.

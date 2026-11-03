@@ -25,7 +25,7 @@ Ordem de construção: **base comum** (classificação do plano de contas, statu
 
 ### Tarefas do Bruno (fora do sistema, antes/durante a F2)
 1. Organizar e aprender a parametrizar a antecipação do cartão no Santri.
-2. Descobrir onde está lançada a comissão desde mar/2026 (paga sempre no mês seguinte, mas quase não aparece como título).
+2. ~~Descobrir onde está lançada a comissão~~ respondido 02/11/2026: paga na folha (entra no custo fixo de salários).
 3. Primeira carga do cadastro de dívidas (contratos, saldos, taxas).
 4. Definir o caixa mínimo de cada loja.
 5. Revisar o rascunho da classificação do plano de contas (a Claude prepara).

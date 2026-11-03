@@ -34,7 +34,7 @@
 |---|---|
 | Janela das vendas | 6 meses completos **antes do mês da última venda importada**: `fim = date_trunc('month', max(data_fechamento)) - 1 dia`, `ini = date_trunc('month', fim) - 5 meses`. Importação atrasada não puxa a média para baixo. |
 | Venda média do mês | `(Σ vlr_liquido PED − Σ vlr_liquido DEV) / 6` da loja na janela (DEV vem positivo em `vendas_santri`). |
-| Percentuais (sobre `Σ vlr_liquido` PED da janela) | `custo_compra` = Σ `custo_compra_santri` · `frete` = Σ `resultado->>'frete'` · `impostos` = Σ `resultado->>'impostos'` · `comissao` = Σ (`resultado->>'comissao'` + `resultado->>'rt'`) · `financeiro` = Σ `resultado->>'custo_financeiro'` (taxa do cartão antecipado). Campo nulo conta 0. |
+| Percentuais (sobre `Σ vlr_liquido` PED da janela) | `custo_compra` = Σ `custo_compra_santri` · `frete` = Σ `resultado->>'frete'` (frete da compra, que não está no custo do Santri: soma ao custo, decisão do Bruno) · `impostos` = Σ `resultado->>'impostos'` · `comissao` = Σ `resultado->>'rt'` **só a RT dos arquitetos**: a comissão dos vendedores é paga na folha e já está no custo fixo de salários (decisão do Bruno, 02/11/2026) · `financeiro` = Σ `resultado->>'custo_financeiro'` (taxa do cartão antecipado). Campo nulo conta 0. |
 | Perfil de recebimento | Para cada PED da janela, títulos a receber da foto atual com `loja_id` igual e `pedido_numero = numero`, tipo fora de `^(cr.dito|previs)`. Data em que o dinheiro entra: cartão → `emissao` (antecipado), `Baixado` → `pagamento`, senão `vencimento`. `k = least(greatest(data − data_fechamento::date, 0) / 7, 52)`. `receb[k] = Σ valor_documento em k / Σ vlr_liquido PED`. O que sobra (`1 − Σ receb`, se positivo) soma em `receb[0]` (venda sem título = à vista). Se `Σ receb > 1`, normaliza para 1. |
 | Chave `% à vista` (`p_entrada_pct`, 0–100, null = perfil) | `receb[0] = pct/100`; os demais são multiplicados por `(1 − pct/100) / Σ demais` (se `Σ demais = 0`, `receb[0] = 1`). |
 | Venda do mês M | `p_vendas = 'media'` (padrão) → venda média · `'meta'` → `Σ metas.faturamento` da loja em M com `usuario_id is null`, e se não houver, a média (marca `fonte='media'` no mês) · `'zero'` → 0. |
@@ -67,13 +67,13 @@
   - `interno.caixa_perfil(p_loja smallint) returns jsonb` (stable): `{ini, fim, venda_media_mes, pct:{custo_compra, frete, impostos, comissao, financeiro}, receb:[53 números, soma 1]}` ou `null` quando a loja não tem PED na janela. Regras na tabela acima.
   - `public.salvar_datas_caixa(p_loja smallint, p_dia_comissao smallint, p_dia_impostos smallint) returns void`: exige `pode_ver_financeiro()` e loja em `lojas_tela(p_loja)`, faz upsert em `caixa_parametros`, dia fora de 1–28 → erro `'Dia inválido'`.
 
-- [ ] **Step 1: Teste SQL** (`teste_47…`, usuário admin nos claims, como no `teste_42`). Dentro da transação: neutralizar as vendas reais com `update public.vendas_santri set data_fechamento = data_fechamento - interval '5 years';`, criar uma importação `receber` nova (vira a foto atual) e, na loja 1, um PED por mês no dia 15 de abr a set/2026 (`numero` `'TESTE-V4'`…`'TESTE-V9'`, `vlr_liquido` 6000, `custo_compra_santri` 3000, `resultado` `{"impostos":600,"comissao":300,"rt":0,"frete":0,"custo_financeiro":0}`), um DEV em 20/09 de 600 e um PED em 30/10/2026 de 6000 (só define a janela). Para cada PED de abr–set, um título a receber `Duplic`, `Aberto`, `pedido_numero` = número do pedido, `valor_documento` 3000, `vencimento` = fechamento + 14.
+- [ ] **Step 1: Teste SQL** (`teste_47…`, usuário admin nos claims, como no `teste_42`). Dentro da transação: neutralizar as vendas reais com `update public.vendas_santri set data_fechamento = data_fechamento - interval '5 years';`, criar uma importação `receber` nova (vira a foto atual) e, na loja 1, um PED por mês no dia 15 de abr a set/2026 (`numero` `'TESTE-V4'`…`'TESTE-V9'`, `vlr_liquido` 6000, `custo_compra_santri` 3000, `resultado` `{"impostos":600,"comissao":999,"rt":300,"frete":0,"custo_financeiro":0}`), um DEV em 20/09 de 600 e um PED em 30/10/2026 de 6000 (só define a janela). Para cada PED de abr–set, um título a receber `Duplic`, `Aberto`, `pedido_numero` = número do pedido, `valor_documento` 3000, `vencimento` = fechamento + 14.
 
 ```sql
 p := interno.caixa_perfil(1::smallint);
 assert p->>'ini' = '2026-04-01' and p->>'fim' = '2026-09-30', 'FALHOU janela';
 assert (p->>'venda_media_mes')::numeric = 5900, 'FALHOU venda media';
-assert (p->'pct'->>'custo_compra')::numeric = 0.5 and (p->'pct'->>'impostos')::numeric = 0.1 and (p->'pct'->>'comissao')::numeric = 0.05, 'FALHOU pct';
+assert (p->'pct'->>'custo_compra')::numeric = 0.5 and (p->'pct'->>'impostos')::numeric = 0.1 and (p->'pct'->>'comissao')::numeric = 0.05, 'FALHOU pct (comissao = so RT, comissao de vendedor fora)';
 assert jsonb_array_length(p->'receb') = 53, 'FALHOU tamanho receb';
 assert round((p->'receb'->>0)::numeric, 4) = 0.5 and round((p->'receb'->>2)::numeric, 4) = 0.5, 'FALHOU perfil';
 assert interno.caixa_perfil(2::smallint) is null, 'FALHOU loja sem venda';
@@ -143,7 +143,7 @@ git push
 
 **Interfaces:**
 - Consumes: `interno.caixa_perfil` (Task 1), `interno.caixa_fluxo` (Task 2), `public.metas`, `public.vendas_santri`, `public.caixa_parametros.dia_comissao/dia_impostos` (padrão 10 e 20 quando a loja não tem linha).
-- Produces: `interno.caixa_fluxo` com as origens `vendas`, `custo_vendas`, `comissao_vendas` e `imposto_vendas` (mesma assinatura da Task 2). `descricao`: `'Vendas futuras (média 6 meses)'`, `'Vendas futuras (meta)'`, `'Custo das vendas futuras'`, `'Taxa do cartão das vendas futuras'`, `'Comissão e RT das vendas de mm/aaaa'`, `'Impostos das vendas de mm/aaaa'`.
+- Produces: `interno.caixa_fluxo` com as origens `vendas`, `custo_vendas`, `comissao_vendas` e `imposto_vendas` (mesma assinatura da Task 2). `descricao`: `'Vendas futuras (média 6 meses)'`, `'Vendas futuras (meta)'`, `'Custo das vendas futuras'`, `'Taxa do cartão das vendas futuras'`, `'RT dos arquitetos das vendas de mm/aaaa'`, `'Impostos das vendas de mm/aaaa'`.
   - `interno.caixa_vendas_mes(p_loja smallint, p_hoje date, p_vendas text) returns table(mes date, venda numeric, fonte text)`: os 12 meses do horizonte (`fonte` ∈ `media`, `meta`, `zero`). A projeção usa para mostrar de onde veio a venda.
 
 - [ ] **Step 1: Teste SQL** (`teste_49…`, hoje = `'2026-11-04'`): mesma preparação de vendas e títulos a receber do `teste_47` (vendas reais neutralizadas, importação `receber` nova). Importação `pagar` nova com um título `Aberto`, loja 1, plano `TESTE.COM` classificado `comissoes_rt`, `valor_documento` 100, vencimento 10/12/2026. Se a loja 1 tiver linha em `caixa_parametros`, fazer `update` para `dia_comissao=10, dia_impostos=20`. Esperado com `caixa_fluxo(array[1], h, 'triagem', 'media', null)`, sendo venda do dia de nov = 5900/30:
@@ -234,7 +234,7 @@ git push
   - a linha "Vendas futuras" aparece em "Entra";
   - uma célula com `grupos_est` ≠ 0 mostra `◐` e tem `title` "inclui valor estimado";
   - no detalhe, uma linha com `titulo_id` null mostra "estimado" na coluna Triagem e a `descricao` como nome;
-  - na aba Saldos, mudar "Dia de pagar comissão" para 5 chama `salvar_datas_caixa` com `p_dia_comissao=5`;
+  - na aba Saldos, mudar "Dia de pagar a RT" para 5 chama `salvar_datas_caixa` com `p_dia_comissao=5`;
   - em 390 px: `scrollWidth <= 390`.
 - [ ] **Step 2: Rodar e ver falhar** (`node teste_caixa.mjs`).
 - [ ] **Step 3: Implementar.**
@@ -242,10 +242,10 @@ git push
   - `CX_ENTRADAS` passa a `[['clientes','Clientes'],['vendas_futuras','Vendas futuras'],['outros_entrada','Outras entradas']]`.
   - `cel()` acrescenta ` ◐` e `title="inclui valor estimado"` quando `c.grupos_est?.[g]` ≠ 0.
   - Detalhe: coluna Triagem = `'estimado'` quando `titulo_id` é null. `p_vendas` e `p_entrada_pct` vão junto na chamada.
-  - Aba Saldos: em cada loja, ao lado do caixa mínimo, "Dia de pagar comissão" e "Dia dos impostos" (`input type=number min=1 max=28`), no `change` → `salvar_datas_caixa`.
-  - Nota no rodapé da Projeção (texto fixo, trocar o atual): "◐ = inclui valor estimado. Lançado: o que está no Santri. Estimado: custo fixo ainda não lançado (média de 6 meses menos o que já foi lançado no mês), vendas futuras (média de 6 meses ou meta) com o recebimento no ritmo dos últimos 6 meses, o custo dessas vendas, e comissão e impostos das vendas pagos no mês seguinte. Cartão não entra no a receber porque já foi antecipado. Parcelas de dívida fora do Santri ainda não entram." Acrescentar uma linha por loja com `perfil`: "LOJA: venda média R$ X/mês (mm/aa a mm/aa), Y% recebido na semana da venda".
+  - Aba Saldos: em cada loja, ao lado do caixa mínimo, "Dia de pagar a RT" e "Dia dos impostos" (`input type=number min=1 max=28`), no `change` → `salvar_datas_caixa`.
+  - Nota no rodapé da Projeção (texto fixo, trocar o atual): "◐ = inclui valor estimado. Lançado: o que está no Santri. Estimado: custo fixo ainda não lançado (média de 6 meses menos o que já foi lançado no mês), vendas futuras (média de 6 meses ou meta) com o recebimento no ritmo dos últimos 6 meses, o custo dessas vendas, e RT dos arquitetos e impostos das vendas pagos no mês seguinte. A comissão dos vendedores já está no salário (custo fixo). Cartão não entra no a receber porque já foi antecipado. Parcelas de dívida fora do Santri ainda não entram." Acrescentar uma linha por loja com `perfil`: "LOJA: venda média R$ X/mês (mm/aa a mm/aa), Y% recebido na semana da venda".
 - [ ] **Step 4: Rodar Playwright e `node --check`** (extrair o maior `<script>` do `index.html` para um arquivo temporário). Esperado: `TUDO OK` e sem saída do `node --check`.
-- [ ] **Step 5: Docs, commit e push.** Em `docs/PROXIMOS_PASSOS.md` §0, F2: "plano 2 construído". Em "Pendências" do plano 1, acrescentar: "Comissão: se a comissão (tarefa 2 do Bruno) for paga dentro da folha, o salário fixo recorrente já a inclui. Nesse caso, zerar `comissao` no perfil para não contar em dobro" e "Conferir se `frete` do resultado é frete de compra (vai para fornecedor) e se `custo_compra_santri` já inclui esse frete".
+- [ ] **Step 5: Docs, commit e push.** Em `docs/PROXIMOS_PASSOS.md` §0, F2: "plano 2 construído". Na lista de tarefas do Bruno, marcar a tarefa 2 (comissão) como respondida: "paga na folha, entra no custo fixo de salários".
 
 ```bash
 git add index.html docs/ALTERACOES.md docs/HANDOFF.md docs/PROXIMOS_PASSOS.md
@@ -258,4 +258,3 @@ git push
 Avisar o Bruno em poucas linhas: a projeção agora mostra o ano inteiro com custo fixo e vendas. Para conferir:
 1. Chave em "Sem vendas novas": mostra o pior caso.
 2. Os percentuais do perfil, na nota da Projeção, devem ser parecidos com os que ele conhece.
-3. Se a comissão for paga na folha, avisar.
