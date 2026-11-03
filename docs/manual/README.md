@@ -11,7 +11,7 @@ A ordem segue o menu lateral do sistema.
 | Grupo do menu | Tela | Capítulo | Situação |
 | --- | --- | --- | --- |
 | Operação | Pedidos | [pedidos.md](pedidos.md) | pronto (rascunho) |
-| Operação | Compras | — | a escrever |
+| Operação | Compras | [compras.md](compras.md) | pronto (rascunho) |
 | Operação | Chegada | — | a escrever |
 | Operação | Entregas | — | a escrever |
 | Operação | Estoque | — | a escrever |
