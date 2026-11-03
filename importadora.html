@@ -856,6 +856,8 @@ function lerRelatorioNotasSaida(rows){
   const f=filtros.map(nrm).join(' | ');
   const im=f.search(/tipo\(?s?\)? de movimento/);
   if(im>=0&&!/entrega|pedido/.test(f.slice(im))) avisos.push('O filtro de <b>Tipo de movimento</b> não incluiu <b>Entregas</b> nem <b>Pedido</b>: as remessas ficam de fora. Use todos os tipos.');
+  const isit=f.search(/situac/);
+  if(isit>=0&&/cancelad|denegad|inutiliz/.test(f.slice(isit))) erros.push('O filtro de <b>Situação</b> incluiu notas <b>canceladas, denegadas ou inutilizadas</b>. O relatório não traz a situação de cada nota, então elas entrariam como remessas válidas. Exporte de novo só com as emitidas normalmente (DPEC/EPEC/contingência podem ficar), sem canceladas.');
   if(semLoja) avisos.push(`${semLoja} nota(s) sem loja reconhecida (PVA/RV) foram ignoradas.`);
   const u=L_.unicos(regs,x=>x.loja_id+'|'+x.cod_nota,avisos,'nota');
   const datas=u.map(x=>x.emissao).filter(Boolean).sort();
@@ -954,7 +956,7 @@ function lerRelatorioDRE(rows){
 
 // ---------- Conferência e envio dos relatórios novos (16/10/2026) ----------
 // DEST diz para onde vai cada arquivo: tipo da importação (rotina), área de espera e RPC de prévia/gravação.
-let DEST=null, regsNovos=[];
+let DEST=null, regsNovos=[], PREVIA_NOTAS=null;
 const ok=v=>v!=null;
 const confere=(a,b,txt)=>!ok(b)?'':Math.abs(a-b)<0.05?' ✓':` (<b>atenção:</b> ${txt||'o relatório diz'} ${typeof b==='number'&&Math.abs(b)>999?brl(b):b})`;
 function iniciarConferencia(f,n,rotulo){
@@ -1021,7 +1023,7 @@ function conferirNotasSaida(rows,f){
   const n=(fn)=>r.regs.filter(fn).length, pva=n(x=>x.loja_id===1), rv=n(x=>x.loja_id===2);
   const rem=n(x=>/^entregas( agrupadas)?$/i.test(x.tipo_movimento||'')), fat=n(x=>/^pedido$/i.test(x.tipo_movimento||'')), dev=n(x=>/^dev/i.test(x.tipo_movimento||''));
   const d=s=>s.slice(8,10)+'/'+s.slice(5,7);
-  msg('colMsgs',`Notas no arquivo: <b>${r.regs.length.toLocaleString('pt-BR')}</b> (PVA ${pva} · RV ${rv})${confere(r.regs.length,r.qtdArquivo)} · remessas (entregas) ${rem} · faturamentos ${fat} · devoluções ${dev}`+(r.periodo?` · período ${d(r.periodo[0])} a ${d(r.periodo[1])}`:'')+'.','ok');
+  msg('colMsgs',`Notas no arquivo: <b>${r.regs.length.toLocaleString('pt-BR')}</b> (PVA ${pva} · RV ${rv})${confere(r.regs.length,r.qtdArquivo)} · remessas (entregas) ${rem} · faturamentos ${fat} · devoluções/cancelamentos ${dev}`+(r.periodo?` · período ${d(r.periodo[0])} a ${d(r.periodo[1])}`:'')+'.','ok');
   DEST={imp:'notas_saida',stg:'notas_saida',rpc:'notas_saida'};
   seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
 }
@@ -1092,7 +1094,8 @@ function previaNovos(data){
     $('kpis').innerHTML=k(data.no_arquivo,`notas no arquivo · PVA ${data.pva} · RV ${data.rv}`)+base+k(data.sumiram,'sumiram (não vieram neste período)');
     msg('previaMsgs',`Emitidas de <b>${d(data.de)} a ${d(data.ate)}</b>. ${data.remessas} remessas, das quais ${data.remessas_ligadas} ligadas a entregas do sistema · ${data.pedidos_faturados??0} faturamentos (Pedido), ${data.pedidos_no_sistema??0} deles nas vendas do sistema.`,'info');
     if(data.remessas_ligadas<data.remessas) msg('previaMsgs',`${data.remessas-data.remessas_ligadas} remessa(s) não ligam a nenhuma entrega do sistema: importe também o Gerenciamento de Entregas do mesmo período.`,'warn');
-    if(data.sumiram>0) msg('previaMsgs',`${data.sumiram} nota(s) que estavam no sistema não vieram neste arquivo (dentro do mesmo período): foram canceladas/excluídas no Santri, ficam no histórico.`,'warn');
+    PREVIA_NOTAS=data;
+    if(data.sumiram>0) msg('previaMsgs',`${data.sumiram} notas não vieram neste arquivo: canceladas no Santri ou filtro diferente — confira os filtros. Ficam no histórico.`,'warn');
     return; }
   if(DEST.rpc==='estoque'){
     const pl=data.por_local||{};
@@ -1191,6 +1194,8 @@ $('btnPendencias').onclick=()=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='produtos_m2_sem_peso.csv';a.click();
 };
 $('btnAplicar').onclick=async()=>{
+  if(TIPO()==='notas_saida'&&PREVIA_NOTAS){ const sm=PREVIA_NOTAS.sumiram||0, lim=Math.max(5,0.02*(PREVIA_NOTAS.no_arquivo||0));
+    if(sm>lim&&!confirm(`${sm} notas que estão no sistema não vieram neste arquivo (mais que o normal). Se o filtro do Santri estava diferente, elas serão marcadas como inativas. Gravar mesmo assim?`)) return; }
   $('btnAplicar').disabled=true; $('btnAplicar').textContent='Gravando…';
   const {data,error}=await sb.rpc('aplicar_importacao_'+RPC(),TIPO()==='produtos'?{p_importacao:importacaoId,p_inativar_ausentes:$('inativar').checked}:{p_importacao:importacaoId});
   $('btnAplicar').disabled=false; $('btnAplicar').textContent='Confirmar e gravar';
