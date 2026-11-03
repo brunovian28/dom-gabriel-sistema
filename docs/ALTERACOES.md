@@ -2,11 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 60c** (a próxima é a 61 — avise antes de criar).
+**Última migration: 60d** (a próxima é a 61 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
-| 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: RPC `tela_pedidos` calcula etapa, entrega e alertas pelo Santri (e `interno.pedidos_mercadoria`); 60b ajusta a data de entrega, 60c fecha `interno.pedidos_mercadoria` para anon | 60, 60b, 60c | ver git log |
+| 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: RPC `tela_pedidos` calcula etapa, entrega e alertas pelo Santri (e `interno.pedidos_mercadoria`); 60b ajusta a data de entrega, 60c fecha `interno.pedidos_mercadoria` para anon, 60d regra de entregue (A/B/C), manifesto e alerta `fechar_manifesto` | 60, 60b, 60c, 60d | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: datas de entrega e "cliente precisa" passam a existir no sistema, com histórico de mudanças (tabelas `pedido_datas` e `pedido_datas_eventos`, RPCs `salvar_datas_pedido` e `dados_lancar_pedido`). Gerente, logística, direção e admin alteram qualquer pedido da loja, vendedor só os dele. 59b: as formas de pagamento do Lançar são calculadas por loja + número (o mesmo número existe em PVA e RV) | 59, 59b | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Tela Financeiro: botão "Baixar títulos vencidos (planilha)" com todos os vencidos a pagar e a receber (RPC `exportar_titulos_vencidos`), com colunas em branco para o financeiro anotar a análise e o ajuste no Santri. Objetivo: limpar no Santri os lançamentos antigos errados | 58 | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Desempenho depois da importação do histórico completo do Santri. `titulos_aberto` ignora títulos Baixados (eram 60 mil dos 66 mil e saíam como pago), `caixa_fluxo` lê só 6 meses de títulos a pagar, painel da Direção e Financeiro calculam a última importação do DRE e dos títulos uma vez só (antes era linha a linha), e a tela de Compras liga venda → compra por junção em vez de varredura. Resultados conferidos iguais. Caixa (projeção das 2 lojas) 7,5 s → 1,3 s · DRE+títulos do painel ~3,5 s → 0,14 s · ligação de Compras 1,7 s → 0,3 s | 57, 57b, 57c, 57d | ver git log |
