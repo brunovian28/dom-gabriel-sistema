@@ -72,7 +72,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;b
 .erro{background:#fdecea;color:#b00;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0}
 #avisoRel{background:#fdecea;color:#b00;padding:8px 16px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 #avisoRel a{color:#b00;font-weight:bold}#avisoRel button{background:none;border:0;color:#b00;font-size:18px;cursor:pointer;padding:0 4px}
-.topoSetor{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:6px 0 12px}
+.topoSetor.peq{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.topoSetor{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:6px 0 12px}
 .ind,.etapa{background:#fff;border:1px solid var(--bd);border-left:4px solid var(--navy2);border-radius:10px;padding:10px 12px;cursor:pointer}
 .ind.alerta,.etapa.alerta{border-left-color:var(--quente)}.ind.ok{border-left-color:var(--ok)}.ind:hover,.etapa:hover{border-color:var(--navy2)}
 .ind .t,.etapa .t{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
@@ -174,7 +174,7 @@ function veDuasLojas(){ return ehDirecao()||!!EU?.todas_lojas||!EU?.loja_id; }
 let LOJA_VER=0;
 function iniciarLojaVer(){ let v=0; try{ v=+(localStorage.getItem('lojaVer')||0); }catch(_){}
   LOJA_VER=veDuasLojas()?(LOJAS.some(l=>l.id===v)?v:0):(EU.loja_id||0);
-  PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER;
+  AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER;
   if(veDuasLojas()&&filtro.escopo==='minhas'&&!filtro._ini){ filtro.escopo='todas'; } filtro._ini=1; }
 const GRUPOS_MENU=[['Vendas',['#/capas','#/nova','#/painel','#/orcamentos','#/agenda','#/profissionais']],
   ['Operação',['#/pedidos','#/compras','#/chegada','#/entregas','#/estoque']],
@@ -195,7 +195,7 @@ function montarMenu(){ iniciarLojaVer();
   document.querySelectorAll('#menu details.grupo').forEach(d=>d.addEventListener('toggle',()=>{
     try{ localStorage.setItem('menuAbertos',JSON.stringify([...document.querySelectorAll('#menu details.grupo[open]')].map(x=>x.dataset.g))); }catch(_){} }));
   if($('#lojaVer')){ $('#lojaVer').value=String(LOJA_VER); $('#lojaVer').onchange=e=>{ LOJA_VER=+e.target.value; try{localStorage.setItem('lojaVer',LOJA_VER)}catch(_){}
-    PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER; PNL.editar=false; rota(); }; }
+    AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER; PNL.editar=false; rota(); }; }
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
 }
 window.addEventListener('hashchange',rota);
@@ -1034,7 +1034,7 @@ async function telaParametros(){
 }
 
 // ---------- Pedido (PDF do pedido do Santri = a venda de verdade) ----------
-let PED=null, SANTRI_LANCAR=null, PEND_SANTRI=[];
+let PED=null, SANTRI_LANCAR=null;
 const fmtNum=n=>Number(n).toLocaleString('pt-BR');
 const normCond=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 async function abaPed(){
@@ -1336,24 +1336,72 @@ async function exportarCapas(pid){
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-// ---------- Pedidos: painel de andamento e mercadoria parada ----------
-let PDF_={loja:0,local:'abertos'};
-async function pendenciasSantri(){
-  const {data:par}=await sb.from('parametros_loja').select('loja_id,pendencias_desde');
-  const ds=(par||[]).map(p=>p.pendencias_desde).filter(Boolean).sort()[0]; if(!ds) return '';
-  let q=sb.from('vendas_santri').select('id,loja_id,numero,data_fechamento,cliente_nome,vendedor_santri,vlr_liquido').eq('tipo','PED').is('pedido_id',null).gte('data_fechamento',ds).order('data_fechamento');
-  if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
-  const {data,error}=await q.limit(500); if(error) return '';
-  let lista=(data||[]).filter(v=>{const p=(par||[]).find(x=>x.loja_id===v.loja_id); return !p?.pendencias_desde||v.data_fechamento.slice(0,10)>=p.pendencias_desde;});
-  const meu=EU.papel==='vendedor', nomeS=(EU.nome_santri||'').trim().toUpperCase();
-  if(meu&&nomeS) lista=lista.filter(v=>(v.vendedor_santri||'').trim().toUpperCase()===nomeS);
-  PEND_SANTRI=lista; if(!lista.length) return '';
-  const podeLancar=!SETORES.includes(EU.papel);
-  return `<div class="card" style="border-left:4px solid var(--quente)"><h3>${meu&&nomeS?'Seus pedidos':'Pedidos'} do Santri ainda não lançados no sistema (${lista.length})</h3>
-   <p class="mut" style="margin-top:-4px">Venda fechada no Santri sem capa do pedido aqui: fica sem data de entrega, sem acompanhamento e com a margem incompleta.${podeLancar?' Clique em <b>Lançar</b> para abrir a capa do cliente e completar.':''}${meu&&!nomeS?' <b>Seu nome do Santri ainda não está ligado ao seu usuário — a lista mostra a loja toda. Peça à direção.</b>':''}</p>
-   <div class="tbl"><table><tr><th>Pedido</th><th>Fechamento</th><th>Cliente</th><th>Vendedor</th><th style="text-align:right">Valor</th>${podeLancar?'<th></th>':''}</tr>
-   ${lista.map(v=>`<tr><td><b>${esc(fmtNum(v.numero))}</b> <span class="mut">${esc(LOJAS.find(l=>l.id===v.loja_id)?.codigo||'')}</span></td><td>${dBR(v.data_fechamento)}</td><td>${esc(v.cliente_nome||'')}</td><td>${esc((v.vendedor_santri||'').split(' ')[0])}</td><td style="text-align:right">${brl(v.vlr_liquido)}</td>${podeLancar?`<td><button class="gold" data-vlanc="${v.id}">Lançar</button></td>`:''}</tr>`).join('')}
-   </table></div></div>`;
+// ---------- Pedidos: monta sozinha pelo Santri (RPC tela_pedidos) ----------
+// Números que norteiam no topo (etapa da mercadoria e alertas), lista embaixo. Datas de previsão e "cliente precisa" editáveis (salvar_datas_pedido).
+let PDF_={etapa:null,alerta:null,busca:'',entregues:false,editando:null};
+let PDC=null;
+const PD_ETAPAS=[['aguardando_pagamento','Aguardando pagamento'],['falta_comprar','Falta comprar'],['na_fabrica','Na fábrica'],['faturado','Faturado (a caminho)'],['pronto','Pronto para entregar'],['saindo','Saindo']];
+const PD_ETAPA_NOME=Object.assign(Object.fromEntries(PD_ETAPAS),{entregue:'Entregue'});
+const PD_ALERTAS=[['sem_previsao','Sem previsão'],['previsao_vencida','Previsão vencida'],['atualizar_santri','Atualize no Santri'],['precisa_antes','Cliente precisa antes'],['nao_lancado','Não lançados'],['fechar_manifesto','Fechar manifesto']];
+const PD_ALERTA_TXT={sem_previsao:'Sem previsão de entrega',previsao_vencida:'Previsão vencida',atualizar_santri:'Atualize no Santri',precisa_antes:'Cliente precisa antes',parado_60:'Mais de 60 dias',nao_lancado:'Não lançado',fechar_manifesto:'Fechar manifesto no Santri'};
+const PD_ALERTA_COR={sem_previsao:'var(--quente)',previsao_vencida:'var(--quente)',atualizar_santri:'#b36b00',precisa_antes:'#b36b00',parado_60:'#888',nao_lancado:'#888',fechar_manifesto:'var(--fria)'};
+const PD_ENTREGA_TXT={parcial:'Entrega parcial',agendada:'Agendada',sem_agendamento:'Sem agendamento',gerada:'Manifesto gerado',entregue:'Entregue',sem_info:'Sem info no Santri'};
+const pdDias=(a,b)=>Math.round((new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/864e5);
+function pdVisiveis(r){
+  const hj=r.hoje||hojeLocalJ();
+  return (r.pedidos||[]).filter(p=>{
+    const al=p.alertas||[];
+    if(p.etapa!=='entregue') return true;
+    if(PDF_.alerta==='fechar_manifesto') return al.includes('fechar_manifesto');
+    if(!PDF_.entregues) return false;
+    return !p.entregue_em||pdDias(hj,p.entregue_em)<=30;
+  });
+}
+function pdLinha(p,r){
+  const al=p.alertas||[], l=LOJAS.find(x=>x.id===p.loja_id)?.codigo||'';
+  const pag=Number(p.pago_pct||0);
+  const pgto=pag>=100?pillJ('pago','var(--ok)'):pag>0?pillJ('pago '+Math.round(pag)+'%','var(--morna)'):pillJ('sem pagamento','var(--quente)');
+  const merc=`<b>${esc(PD_ETAPA_NOME[p.etapa]||p.etapa)}</b><div class="mut" style="font-size:12px">${p.chegou||0} de ${p.itens||0} itens chegaram</div>`;
+  const prev=p.previsao?`<div class="${al.includes('previsao_vencida')?'atras':''}">${dBR(p.previsao).slice(0,5)} <span class="mut" style="font-size:12px">(${p.prev_sistema&&p.previsao===p.prev_sistema?'sistema':'Santri'})</span></div>`:'';
+  const ent=`${esc(PD_ENTREGA_TXT[p.entrega]||p.entrega||'')}${p.etapa==='entregue'&&p.entregue_em?' '+dBR(p.entregue_em).slice(0,5):''}${prev}`;
+  const dias=p.dias??pdDias(r.hoje,p.fechamento);
+  const acao=`<button class="sec" data-datas="${p.venda_id}">Datas</button>${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
+  let h=`<tr data-v="${esc(p.numero)}"><td style="white-space:nowrap"><b>${esc(fmtNum(p.numero))}</b> <span class="mut">${esc(l)}</span></td><td>${esc(p.cliente||'')}</td><td>${esc((p.vendedor||'').split(' ')[0])}</td>
+    <td>${dBR(p.fechamento)}</td><td class="${dias>60&&p.etapa!=='entregue'?'atras':''}">${dias}</td><td>${pgto}</td><td>${merc}</td><td>${ent}</td><td>${p.precisa?dBR(p.precisa).slice(0,5):'<span class="mut">—</span>'}</td>
+    <td>${al.map(a=>`<div style="margin:1px 0">${pillJ(PD_ALERTA_TXT[a]||a,PD_ALERTA_COR[a]||'#888')}</div>`).join('')}</td><td><div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">${acao}</div></td></tr>`;
+  if(PDF_.editando===p.venda_id) h+=`<tr class="pdEdit"><td colspan="11" style="background:#f7f9fc"><div style="position:sticky;left:0;width:min(100%,calc(100vw - 56px));box-sizing:border-box">
+    <div class="linha"><div style="flex:1 1 140px"><label>Previsão de entrega</label><input type="date" id="pdPrev" value="${esc(p.prev_sistema||p.previsao||'')}"></div>
+    <div style="flex:1 1 140px"><label>Cliente precisa até</label><input type="date" id="pdPrec" value="${esc(p.precisa||'')}"></div></div>
+    <div class="linha" style="margin-top:8px"><button class="gold" id="pdSalvar" data-sv="${p.venda_id}">Salvar</button><button class="sec" id="pdCancelar">Cancelar</button></div>
+    <p class="mut" style="font-size:12px;margin:6px 0 0;white-space:normal">A previsão também vale no Santri: se mudar aqui, atualize lá.</p></div></td></tr>`;
+  return h;
+}
+function pdLista(){
+  const r=PDC.r, busca=PDF_.busca.trim().toUpperCase();
+  let lista=pdVisiveis(r);
+  if(PDF_.etapa) lista=lista.filter(p=>p.etapa===PDF_.etapa);
+  if(PDF_.alerta) lista=lista.filter(p=>(p.alertas||[]).includes(PDF_.alerta));
+  if(busca) lista=lista.filter(p=>[p.numero,fmtNum(p.numero),p.cliente,p.vendedor].some(v=>String(v||'').toUpperCase().includes(busca)));
+  lista=lista.slice().sort((a,b)=>(b.dias||0)-(a.dias||0));
+  const max=500, vis=lista.slice(0,max);
+  return `<div class="tbl"><table id="pdTabela"><tr><th>Pedido</th><th>Cliente</th><th>Vendedor</th><th>Fechamento</th><th>Dias</th><th>Pagamento</th><th>Mercadoria</th><th>Entrega</th><th>Cliente precisa</th><th>Alertas</th><th></th></tr>
+   ${vis.map(p=>pdLinha(p,r)).join('')||'<tr><td colspan="11" class="mut">Nenhum pedido.</td></tr>'}</table></div>
+   ${lista.length>max?`<p class="mut">Mostrando ${max} de ${lista.length}. Use a busca ou um filtro.</p>`:`<p class="mut">${lista.length} pedido(s).</p>`}`;
+}
+function pdLigar(){
+  const redesenha=()=>{ $('#pdLista').innerHTML=pdLista(); pdLigar(); };
+  document.querySelectorAll('#pdTabela [data-vlanc]').forEach(b=>b.onclick=()=>abrirParaLancar(+b.dataset.vlanc));
+  document.querySelectorAll('#pdTabela [data-capa]').forEach(b=>b.onclick=()=>{abaAtual='ped';location.hash='#/capa/'+b.dataset.capa;});
+  document.querySelectorAll('#pdTabela [data-datas]').forEach(b=>b.onclick=()=>{PDF_.editando=PDF_.editando===+b.dataset.datas?null:+b.dataset.datas; redesenha(); });
+  const c=$('#pdCancelar'); if(c) c.onclick=()=>{PDF_.editando=null; redesenha();};
+  const s=$('#pdSalvar'); if(s) s.onclick=async()=>{
+    const p=PDC.r.pedidos.find(x=>x.venda_id===+s.dataset.sv); if(!p) return;
+    const prev=$('#pdPrev').value||null, prec=$('#pdPrec').value||null; s.disabled=true;
+    try{ await rpcJ('salvar_datas_pedido',{p_loja:p.loja_id,p_numero:p.numero,p_previsao:prev,p_precisa:prec}); }catch(e){ s.disabled=false; return erro(e); }
+    PDF_.editando=null;
+    toast(prev&&prev!==p.prev_santri?'Datas salvas. Atualize a previsão também no Santri.':'Datas salvas');
+    telaPedidos();
+  };
 }
 async function abrirParaLancar(id){
   const {data:v}=await sb.from('vendas_santri').select('numero,cliente_codigo,cliente_nome,loja_id').eq('id',id).single(); if(!v) return;
@@ -1367,35 +1415,30 @@ async function abrirParaLancar(id){
   if(!confirm(`Não achei capa para ${v.cliente_nome||'este cliente'} (pedido ${fmtNum(v.numero)}). Criar uma capa nova para lançar o pedido?`)){ SANTRI_LANCAR=null; return; }
   location.hash='#/nova';
 }
-async function telaPedidos(){
-  const pend=await pendenciasSantri();
-  let q=sb.from('pedidos').select('id,capa_id,loja_id,numero_santri,cliente_pdf,vendedor_santri,data_fechamento,data_cliente_precisa,previsao_entrega,guarda_ate,local_mercadoria,total_pedido,status,no_deposito_em,na_transportadora_em').neq('status','Cancelado').order('data_fechamento');
-  if(PDF_.loja) q=q.eq('loja_id',PDF_.loja);
-  const {data,error}=await q.limit(1000); if(error) return erro(error);
-  const SAN=await situacaoSantriPedidos([...new Set(data.map(p=>p.numero_santri).filter(Boolean))]);
-  const h=hoje(), dias=d=>d?Math.floor((new Date(h)-new Date(d))/864e5):null;
-  const abertos=data.filter(p=>p.local_mercadoria!=='Entregue');
-  const lista=PDF_.local==='abertos'?abertos:PDF_.local==='todos'?data:data.filter(p=>p.local_mercadoria===PDF_.local);
-  const locais=(OP.local_mercadoria&&OP.local_mercadoria.length)?OP.local_mercadoria:['Aguardando compra','Pedido na fábrica','Na transportadora (pátio)','No depósito','Entregue parcial','Entregue'];
-  const soma=l=>abertos.filter(p=>p.local_mercadoria===l).reduce((s,p)=>s+Number(p.total_pedido||0),0);
-  const venc=abertos.filter(p=>p.guarda_ate&&p.guarda_ate<h);
-  const semData=abertos.filter(p=>!p.previsao_entrega);
-  $('#conteudo').innerHTML=`<h2 style="margin:4px 0;color:var(--navy)">Pedidos e mercadoria</h2>${pend}
-   <div class="card"><div class="g3"><div><label>Loja</label><select id="pdLoja"><option value="0">Todas</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>
-     <div><label>Mostrar</label><select id="pdLocal"><option value="abertos">Não entregues</option>${locais.map(l=>`<option>${esc(l)}</option>`).join('')}<option value="todos">Todos</option></select></div></div></div>
-   <div class="kpis" style="margin-bottom:12px">${locais.filter(l=>l!=='Entregue').map(l=>`<div class="kpi" data-loc="${esc(l)}" style="cursor:pointer"><b>${abertos.filter(p=>p.local_mercadoria===l).length}</b><span>${esc(l)} · ${brl(soma(l))}</span></div>`).join('')}
-     <div class="kpi"><b class="${venc.length?'atras':''}">${venc.length}</b><span>com guarda vencida</span></div><div class="kpi"><b class="${semData.length?'atras':''}">${semData.length}</b><span>sem previsão de entrega</span></div></div>
-   <div class="card"><div class="tbl"><table><tr><th>Pedido</th><th>Cliente</th><th>Consultor</th><th>Fechamento</th><th>Dias</th><th>Onde está</th><th>Cliente precisa</th><th>Previsão entrega</th><th>Guarda até</th><th style="text-align:right">Valor</th><th>No Santri</th></tr>
-   ${lista.map(p=>{const d=dias(p.data_fechamento), gv=p.guarda_ate&&p.guarda_ate<h&&p.local_mercadoria!=='Entregue';
-     return `<tr style="cursor:pointer" data-capa="${p.capa_id}"><td><b>${esc(p.numero_santri)}</b> <span class="mut">${esc(LOJAS.find(l=>l.id===p.loja_id)?.codigo||'')}</span></td><td>${esc((p.cliente_pdf||'').replace(/^[\d.]+\s*-\s*/,''))}</td><td>${esc((p.vendedor_santri||'').split(' ')[0])}</td>
-     <td>${dBR(p.data_fechamento)}</td><td class="${d>60&&p.local_mercadoria!=='Entregue'?'atras':''}">${d??''}</td><td>${esc(p.local_mercadoria)}</td><td>${dBR(p.data_cliente_precisa)}</td>
-     <td class="${!p.previsao_entrega&&p.local_mercadoria!=='Entregue'?'atras':''}">${p.previsao_entrega?dBR(p.previsao_entrega):'—'}</td><td class="${gv?'atras':''}">${dBR(p.guarda_ate)}${gv?' (vencida)':''}</td><td style="text-align:right">${brl(p.total_pedido)}</td><td>${selosSantri(SAN[p.numero_santri])}</td></tr>`}).join('')||'<tr><td colspan="11" class="mut">Nenhum pedido.</td></tr>'}</table></div>
-   <p class="mut">"Dias" = dias desde o fechamento. Em vermelho: mais de 60 dias sem entregar, sem previsão de entrega ou guarda vencida. Clique para abrir a capa. "No Santri": pagamento pelas baixas a receber e entrega pelo gerenciamento de entregas importados na Importadora.</p></div>`;
-  $('#pdLoja').value=PDF_.loja; $('#pdLoja').onchange=e=>{PDF_.loja=+e.target.value;telaPedidos();};
-  $('#pdLocal').value=PDF_.local; $('#pdLocal').onchange=e=>{PDF_.local=e.target.value;telaPedidos();};
-  document.querySelectorAll('[data-loc]').forEach(k=>k.onclick=()=>{PDF_.local=k.dataset.loc;telaPedidos();});
-  document.querySelectorAll('[data-capa]').forEach(r=>r.onclick=()=>{abaAtual='ped';location.hash='#/capa/'+r.dataset.capa;});
-  document.querySelectorAll('[data-vlanc]').forEach(b=>b.onclick=()=>abrirParaLancar(+b.dataset.vlanc));
+async function telaPedidos(usarCache){
+  const lj=lojaJ();
+  if(!usarCache||!PDC||PDC.lj!==lj){
+    $('#conteudo').innerHTML=cabJ('Pedidos e mercadoria')+'<p class="mut">Carregando…</p>';
+    try{ PDC={lj,r:await rpcJ('tela_pedidos',{p_loja:lj||0})}; }catch(e){ return erroTelaJ('Pedidos e mercadoria',e); }
+  }
+  const r=PDC.r, at=r.atualizado||{};
+  const abertos=(r.pedidos||[]).filter(p=>p.etapa!=='entregue');
+  const soma=l=>l.reduce((s,p)=>s+Number(p.valor||0),0);
+  const nAl=a=>(a==='fechar_manifesto'?(r.pedidos||[]):abertos).filter(p=>(p.alertas||[]).includes(a)).length;
+  const etapas=PD_ETAPAS.map(([k,t])=>{const l=abertos.filter(p=>p.etapa===k); return `<div class="etapa${PDF_.etapa===k?' alerta':''}" data-et="${k}"${k==='saindo'?' title="Saindo = manifesto aguardando carregamento há até 30 dias"':''}><div class="t">${t}</div><div class="v">${l.length}</div><div class="s">${brl0(soma(l))}</div></div>`;}).join('');
+  const alertas=PD_ALERTAS.map(([k,t])=>{const n=nAl(k); return `<div class="ind${PDF_.alerta===k?' alerta':n?'':' ok'}" data-al="${k}"><div class="t">${t}</div><div class="v${n&&PDF_.alerta!==k?' atras':''}">${n}</div></div>`;}).join('');
+  $('#conteudo').innerHTML=cabJ('Pedidos e mercadoria'+lojaSufixo(),`<span class="mut">Santri: vendas ${dataHoraJ(at.vendas)} · entregas ${dataHoraJ(at.entregas)} · compras ${dataHoraJ(at.compras)} · notas ${dataHoraJ(at.entradas)} · pagamentos ${dataHoraJ(at.baixas)}</span>`)+
+   `<div class="topoSetor peq">${etapas}</div><div class="topoSetor peq">${alertas}</div>
+   <div class="card"><div class="linha"><input id="pdBusca" placeholder="Buscar pedido, cliente ou vendedor…" value="${esc(PDF_.busca)}" style="flex:1 1 220px;max-width:380px">
+    <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pdEntregues" style="width:auto"${PDF_.entregues?' checked':''}> Mostrar entregues (30 dias)</label></div>
+    <div id="pdLista" style="margin-top:8px">${pdLista()}</div>
+    <p class="mut">Etapa = onde está a mercadoria do pedido, pelos relatórios do Santri (compra, nota de entrada, entrega). Saindo = manifesto aguardando carregamento há até 30 dias. "Atualize no Santri" = a previsão que está aqui é diferente da do Santri: corrija lá também.</p>
+    <p class="mut">Entregue presumido: pedido fora do relatório de pendentes do Santri, com toda a mercadoria já chegada e fechamento há mais de 60 dias, conta como entregue. Manifesto não é processo padrão: o certo é fechar até 30 dias depois da nota fiscal; depois disso aparece "Fechar manifesto".</p></div>`;
+  document.querySelectorAll('[data-et]').forEach(k=>k.onclick=()=>{PDF_.etapa=PDF_.etapa===k.dataset.et?null:k.dataset.et; PDF_.editando=null; telaPedidos(true);});
+  document.querySelectorAll('[data-al]').forEach(k=>k.onclick=()=>{PDF_.alerta=PDF_.alerta===k.dataset.al?null:k.dataset.al; PDF_.editando=null; telaPedidos(true);});
+  $('#pdBusca').oninput=e=>{PDF_.busca=e.target.value; $('#pdLista').innerHTML=pdLista(); pdLigar();};
+  $('#pdEntregues').onchange=e=>{PDF_.entregues=e.target.checked; telaPedidos(true);};
+  pdLigar();
 }
 
 
