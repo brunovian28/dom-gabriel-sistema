@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 54** (a próxima é a 55 — avise antes de criar).
+**Última migration: 55** (a próxima é a 56 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 4: dívida total, curva da dívida e `tela_dividas`; atrasado do Total sem entre lojas | 55 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 3: Renegociado vira contrato com parcelas (`renegociar_titulos`), títulos antigos saem da projeção | 54 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 2: parcelas de dívida fora do Santri na projeção e entre lojas espelhado e fora do Total; códigos das lojas no Santri gravados | 53 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 1: cadastro de dívidas (contratos, parcelas, eventos), ligação ao Santri e códigos das lojas no Santri | 52 | ver git log |
