@@ -26,6 +26,16 @@ label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
 #menu{width:220px;background:#fff;border-right:1px solid var(--bd);padding:12px 8px;flex-shrink:0}
 #menu a{display:block;padding:10px 12px;border-radius:8px;color:var(--txt);text-decoration:none;margin-bottom:2px}
 #menu a.on{background:#eef3f9;color:var(--navy);font-weight:bold}
+#menu details.grupo{margin:4px 0}
+#menu summary{list-style:none;cursor:pointer;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:bold;color:var(--mut);display:flex;justify-content:space-between;align-items:center}
+#menu summary::-webkit-details-marker{display:none}
+#menu summary::after{content:'';width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+#menu details[open]>summary::after{transform:rotate(45deg)}
+#menu summary:hover{color:var(--navy);background:#f6f8fb}
+#menu summary:focus-visible{outline:2px solid var(--navy2);outline-offset:1px}
+#menu details.grupo:has(a.on)>summary{color:var(--navy)}
+#menu details.grupo a{padding:8px 12px 8px 22px}
+@media (prefers-reduced-motion:reduce){#menu summary::after{transition:none}}
 #conteudo{flex:1;padding:16px;max-width:1200px;margin:0 auto;width:100%;padding-bottom:90px}
 #menuMob{display:none}
 @media (max-width:800px){#menu{display:none}#menuMob{display:flex;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--bd);z-index:30;padding-bottom:env(safe-area-inset-bottom)}
@@ -166,6 +176,10 @@ function iniciarLojaVer(){ let v=0; try{ v=+(localStorage.getItem('lojaVer')||0)
   LOJA_VER=veDuasLojas()?(LOJAS.some(l=>l.id===v)?v:0):(EU.loja_id||0);
   PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER;
   if(veDuasLojas()&&filtro.escopo==='minhas'&&!filtro._ini){ filtro.escopo='todas'; } filtro._ini=1; }
+const GRUPOS_MENU=[['Vendas',['#/capas','#/nova','#/painel','#/orcamentos','#/agenda','#/profissionais']],
+  ['Operação',['#/pedidos','#/compras','#/chegada','#/entregas','#/estoque']],
+  ['Financeiro',['#/recebimentos','#/financeiro','#/caixa','#/plano-contas','#/conferencia-st']],
+  ['Configuração',['#/usuarios','#/parametros','#/condicoes','importadora.html']]];
 function montarMenu(){ iniciarLojaVer();
   const P=EU.papel, dir=ehDirecao(), cmp=veCompras();
   const itens=SETORES.includes(P)?[['#/pedidos','Pedidos'],...(veRecebimentosJ()?[['#/recebimentos','Recebimentos']]:[]),['#/compras','Compras'],['#/chegada','Chegada'],['#/entregas','Entregas'],['#/estoque','Estoque'],...(veFinanceiroJ()?[['#/financeiro','Financeiro']]:[]),...(veFinanceiroJ()?[['#/caixa','Caixa']]:[]),['#/agenda','Agenda'],['#/capas','Capas']]
@@ -174,7 +188,12 @@ function montarMenu(){ iniciarLojaVer();
   if(ehDirecao()||EU.importa_tudo||['gerente','compras','financeiro','logistica'].includes(EU.papel)) itens.push(['importadora.html','Importadora']);
   const seletor=veDuasLojas()?`<div style="padding:12px"><label style="color:#cfd8e3">Ver loja</label><select id="lojaVer" style="margin-top:4px"><option value="0">Ambas (PVA + RV)</option>${LOJAS.map(l=>`<option value="${l.id}">${esc(l.codigo)} – ${esc(l.nome)}</option>`).join('')}</select></div>`
     :`<p class="mut" style="padding:12px">Loja: ${esc(LOJAS.find(l=>l.id===EU.loja_id)?.codigo||'-')}</p>`;
-  $('#menu').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')+seletor;
+  const tit=new Map(itens), soltos=itens.filter(([h])=>!GRUPOS_MENU.some(([,hs])=>hs.includes(h)));
+  let abertos=[]; try{ abertos=JSON.parse(localStorage.getItem('menuAbertos')||'[]'); }catch(_){}
+  $('#menu').innerHTML=soltos.map(([h,t])=>`<a href="${h}">${t}</a>`).join('')
+    +GRUPOS_MENU.map(([g,hs])=>{ const its=hs.filter(h=>tit.has(h)); return its.length?`<details class="grupo" data-g="${g}"${abertos.includes(g)?' open':''}><summary>${g}</summary>${its.map(h=>`<a href="${h}">${tit.get(h)}</a>`).join('')}</details>`:''; }).join('')+seletor;
+  document.querySelectorAll('#menu details.grupo').forEach(d=>d.addEventListener('toggle',()=>{
+    try{ localStorage.setItem('menuAbertos',JSON.stringify([...document.querySelectorAll('#menu details.grupo[open]')].map(x=>x.dataset.g))); }catch(_){} }));
   if($('#lojaVer')){ $('#lojaVer').value=String(LOJA_VER); $('#lojaVer').onchange=e=>{ LOJA_VER=+e.target.value; try{localStorage.setItem('lojaVer',LOJA_VER)}catch(_){}
     PDF_.loja=LOJA_VER; AG.loja=LOJA_VER; if(LOJA_VER) CST.loja=LOJA_VER; PNL.editar=false; rota(); }; }
   $('#menuMob').innerHTML=itens.map(([h,t])=>`<a href="${h}">${t}</a>`).join('');
@@ -183,6 +202,7 @@ window.addEventListener('hashchange',rota);
 function rota(){
   if(!EU) return; const h=location.hash||(ehDirecao()?'#/direcao':'#/capas');
   document.querySelectorAll('#menu a,#menuMob a').forEach(a=>a.classList.toggle('on',h.startsWith(a.getAttribute('href'))));
+  document.querySelector('#menu a.on')?.closest('details')?.setAttribute('open','');
   if(h.startsWith('#/capa/')) return abrirCapa(h.split('/')[2]);
   if(h==='#/nova') return novaCapa();
   if(h==='#/usuarios') return telaUsuarios();
