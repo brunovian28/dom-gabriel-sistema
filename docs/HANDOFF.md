@@ -99,6 +99,7 @@ Detalhes úteis: venda direta = comissão de venda direta > 0; `pedido_numero` d
     raise exception 'OK-ROLLBACK %', left(r::text, 2000);
   end $$;
   ```
+- **Função `public.*` nova:** termina com `revoke execute on function public.X(args) from anon, public;` e depois `grant execute on function public.X(args) to authenticated;`. O `alter default privileges` da migration 40 só acrescenta permissão e não tira o EXECUTE de PUBLIC nas funções criadas depois (as RPCs do Caixa, migrations 41–44, nasceram abertas e foram fechadas na 45). Não mudar o default global: quebra as funções `interno.*` das policies de RLS. Depois de criar RPC, rodar `get_advisors` (security) e conferir que não há aviso de `anon`. O conector pede aprovação para REVOKE, e `DROP`/`DELETE` também são tratados como destrutivos: evitar (tabela nova não precisa de `drop policy`).
 - Supabase via conector: `apply_migration` volta "cancelled" se um texto entre aspas tiver ponto e vírgula, e às vezes com DELETE/REVOKE. Em plpgsql com variável e coluna de mesmo nome, usar `#variable_conflict use_column`. Para ajuste pequeno numa função grande dá para aplicar `replace()` sobre `pg_get_functiondef` num bloco DO (deixe o `.sql` em `sql/` com a versão final).
 
 ## Publicar

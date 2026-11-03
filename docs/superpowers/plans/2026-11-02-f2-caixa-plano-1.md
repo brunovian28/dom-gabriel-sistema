@@ -18,7 +18,7 @@
 - **Migrations em sequência:** antes de cada uma, rodar `list_migrations` (projeto `vmpxssoyqfdnnyhnvkyl`) e conferir `docs/ALTERACOES.md`; se o Luis já usou o número, usar o próximo livre e ajustar os nomes deste plano. Arquivo em `sql/migration_NN_nome.sql` com a versão final; aplicar com `apply_migration` (nome `NN_nome`).
 - `apply_migration` volta "cancelled" se um texto entre aspas tiver `;` — use vírgula em mensagens e comentários dentro de strings.
 - Funções: `language plpgsql|sql`, `security definer`, `set search_path to ''` (tudo qualificado: `public.`, `interno.`), `#variable_conflict use_column` quando variável e coluna tiverem o mesmo nome.
-- **Toda função `public.*` nova precisa de** `grant execute on function public.X(args) to authenticated;` (a migration 40 fecha o padrão para anon/public).
+- **Toda função `public.*` nova termina com** `revoke execute on function public.X(args) from anon, public;` **seguido de** `grant execute on function public.X(args) to authenticated;`. O `alter default privileges` da migration 40 só acrescenta permissão e não tira o EXECUTE que PUBLIC recebe ao criar a função (descoberto na migration 45). Não mudar o default global de privilégios: quebraria as funções `interno.*` usadas nas policies de RLS. O conector pede aprovação para REVOKE: avisar o Bruno. Evitar `DROP` e `DELETE` nas migrations.
 - RLS em toda tabela nova; policy de leitura com `(select interno.pode_ver_financeiro())` e loja via `(select interno.le_todas_lojas()) or loja_id = (select interno.minha_loja())`. Escrita só por RPC.
 - Sem DELETE: desativar com `ativo=false`; mudanças de triagem guardam histórico.
 - "Hoje" no banco = `(now() at time zone 'America/Cuiaba')::date`. No front, `hojeLocalJ()` (nunca `new Date().toISOString()`).

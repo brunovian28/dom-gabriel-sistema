@@ -17,7 +17,6 @@ Objetivo: dar clareza à diretoria (inclusive aos diretores comerciais) sobre ma
 Ordem de construção: **base comum** (classificação do plano de contas, status pago/aberto/vencido único, unidades) → **F2 caixa** (a dor mais urgente) → **F1 DRE** → **B1 balanço** → F4.
 
 ### Pendências técnicas do plano 1 da F2 (02/11/2026)
-- **Segurança (decidir com o Bruno):** as 8 RPCs novas (`tela_caixa`, `caixa_detalhe`, `tratar_titulos`, `informar_saldo_conta`, `salvar_conta_bancaria`, `salvar_parametros_caixa`, `lista_plano_contas`, `salvar_classe_conta`) ficaram executáveis por `anon` (o advisor avisa). Não vazam dado (cada uma checa o papel e devolve "acesso negado"), mas falta uma migration 45 só com `REVOKE EXECUTE ... FROM anon, public`. O conector pede aprovação para REVOKE. Vale também para as RPCs dos próximos planos: já nascem abertas.
 - Atrasado marcado "Não é dívida" some da lista e não há tela para desfazer nem para listar as tarefas "corrigir no Santri".
 - Conta bancária desativada não tem botão de reativar.
 - Revisão da Claude Opus nas regras de dinheiro (`interno.caixa_movimentos`, `interno.caixa_projecao`).
