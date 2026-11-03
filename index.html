@@ -1427,11 +1427,11 @@ function blocoCaixaCmp(r){
   const precisa=sem.reduce((t,s)=>t+s.sai+s.comp-s.ent,0);
   const datas=cx.filter(c=>c.saldo).map(c=>`${esc(lojaCodJ(c.loja))} ${brl0(c.saldo.saldo)} em ${dBR(c.saldo.data)}`).join(' · ');
   let manchete;
-  if(!temSaldo) manchete=`<div class="cxM"><b>Para pagar o que vence e comprar a fila em 30 dias, precisa de ${milCmp(precisa)}.</b><span>${algumSaldo?'Falta informar o saldo de uma das lojas':'Informe o saldo em conta para saber se dá'} — botão ao lado.</span></div>`;
+  if(!temSaldo) manchete=`<div class="cxM"><b>Para pagar o que vence e comprar a fila em 30 dias, precisa de ${milCmp(precisa)}.</b><span>${algumSaldo?'Falta informar o saldo de uma das lojas':'Informe o saldo de cada conta para saber se dá'} — na tela Caixa, aba Saldos.</span></div>`;
   else if(pior.v>=0) manchete=`<div class="cxM ok"><b>Dá para comprar: sobra ${milCmp(fim)} em 30 dias.</b><span>No ponto mais baixo (semana ${pior.k+1}) o saldo fica em ${milCmp(pior.v)}.</span></div>`;
   else manchete=`<div class="cxM falta"><b>Falta ${milCmp(-pior.v)} ${fim<0?'até o fim dos 30 dias':'na semana '+(pior.k+1)}.</b><span>${fim>=0?'Depois se recupera e termina com '+milCmp(fim)+'.':'Termina o período com '+milCmp(fim)+'.'} Compre primeiro o que o cliente já pagou há mais tempo.</span></div>`;
   return `<div class="card"><div class="linha" style="justify-content:space-between"><h3 style="margin:0">Caixa para comprar · próximos 30 dias</h3>
-      <div class="linha"><span class="mut">${datas?'Saldo informado: '+datas:'Saldo em conta ainda não informado'}</span><button class="sec" id="cxInformar">Informar saldo</button></div></div>
+      <div class="linha"><span class="mut">${datas?'Saldo informado: '+datas:'Saldo em conta ainda não informado'}</span><button class="sec" id="cxInformar">Informar no Caixa</button></div></div>
     ${manchete}
     <div class="tbl"><table><tr><th>Semana</th><th style="text-align:right">Entra (a receber)</th><th style="text-align:right">Sai (a pagar)</th><th style="text-align:right">Compras (fila)</th><th style="text-align:right">${temSaldo?'Saldo no fim':'Acumulado sem o saldo'}</th></tr>
       <tr><td class="mut">Hoje</td><td></td><td></td><td></td><td style="text-align:right">${temSaldo?brl0(saldo):'—'}</td></tr>
@@ -1440,19 +1440,6 @@ function blocoCaixaCmp(r){
         <td style="text-align:right">${s.comp?brl0(s.comp):''}</td><td style="text-align:right" class="${s.saldo<0?'atras':''}"><b>${brl0(s.saldo)}</b></td></tr>`).join('')}</table></div>
     <p class="mut">Fora da conta: <b>${milCmp(venc)} vencidos a pagar e não baixados</b> (${CATS.map(([x,n])=>n+' '+milCmp(soma(c=>c.vencidos[x]))).join(' · ')}) e ${milCmp(vencRec)} vencidos a receber de clientes. Se parte do vencido for paga agora, sai do mesmo caixa.
     Vendas novas não entram: o cartão cai antecipado no dia da venda. Antecipado à Dexco ("Pre") e créditos já saíram do caixa. Contas a pagar/receber importadas em ${dataHoraJ(r.atualizado.titulos)}; se o filtro foi por emissão, parcelas de títulos emitidos antes de 2026 faltam aqui (exportar por vencimento).</p></div>`;
-}
-function modalSaldoCmp(r){
-  const cx=r.caixa||[];
-  $('#modal').innerHTML=`<div class="modal"><div class="card"><h3>Saldo em conta hoje</h3><p class="mut">Some o saldo dos bancos da loja (o que está disponível hoje). Fica guardado com a data e quem informou.</p>
-    ${cx.map(c=>`<label>${esc(lojaCodJ(c.loja))}${c.saldo?` <span class="mut">· último: ${brl0(c.saldo.saldo)} em ${dBR(c.saldo.data)}</span>`:''}</label><input class="cxIn" data-l="${c.loja}" inputmode="decimal" placeholder="ex.: 125.000,00">`).join('')}
-    <label>Observação (opcional)</label><input id="cxObs" placeholder="ex.: Sicredi + BB">
-    <div class="linha" style="margin-top:12px"><button id="cxSalvar">Salvar</button><button class="sec" id="cxX">Cancelar</button></div></div></div>`;
-  $('#cxX').onclick=()=>$('#modal').innerHTML='';
-  $('#cxSalvar').onclick=async()=>{
-    const num=s=>{s=String(s||'').trim(); if(!s) return null; s=s.replace(/[R$\s]/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); const n=Number(s); return isFinite(n)?n:NaN;};
-    for(const i of document.querySelectorAll('.cxIn')){ const v=num(i.value); if(v===null) continue; if(isNaN(v)) return toast('Valor inválido: '+i.value);
-      const {error}=await sb.rpc('informar_saldo_caixa',{p_loja:+i.dataset.l,p_saldo:v,p_obs:$('#cxObs').value}); if(error) return erro(error); }
-    $('#modal').innerHTML=''; toast('Saldo salvo'); telaCompras(); };
 }
 // Lista das compras do Santri (mesma de antes): busca, planilha, anotação e itens ao clicar
 function listaCmp(lista,modo){
@@ -1602,7 +1589,7 @@ async function telaCompras(usarCache){
   document.querySelectorAll('[data-abac]').forEach(a=>a.onclick=()=>{CMP.aba=a.dataset.abac;CMP.aberto=null;telaCompras(true);});
   document.querySelectorAll('[data-irc]').forEach(a=>a.onclick=()=>{const [ab,sb2]=a.dataset.irc.split(':'); CMP.aba=ab; if(sb2) J.aba[SUBK_CMP[ab]]=sb2; telaCompras(true).then(()=>document.querySelector('.abasSetor')?.scrollIntoView({behavior:'smooth'}));});
   document.querySelectorAll('[data-subc]').forEach(a=>a.onclick=()=>{const [ab,sb2]=a.dataset.subc.split(':'); J.aba[SUBK_CMP[ab]]=sb2; telaCompras(true);});
-  if($('#cxInformar')) $('#cxInformar').onclick=()=>modalSaldoCmp(r);
+  if($('#cxInformar')) $('#cxInformar').onclick=()=>{ J.aba.caixa='sal'; location.hash='#/caixa'; };
   ligarListaCmp([...abertas,...ano]);
 }
 async function abrirCompra(id,todas,manter){
@@ -2205,7 +2192,7 @@ function abaAtrasadosCx(r){
       <button id="cxAtrAplicar">Aplicar aos marcados</button><button class="sec" id="cxAtrTodos">Marcar os listados</button><button class="sec" id="cxAtrLimpa">Limpar</button></div>
     <p class="mut" id="cxAtrConta" style="margin:6px 0 0">Nenhum título marcado</p></div>`+
     listaJ('cxAtr',cols,lista.filter(x=>cxPertence(x,f)),
-      {vazio:'Nenhum atrasado nesta fila.',nota:'Sem decisão, o atrasado entra no caixa desta semana (pior caso). "Não é dívida" (adiantamento ou crédito lançado como conta a pagar): sai do caixa e fica para corrigir no Santri.'});
+      {vazio:'Nenhum atrasado nesta fila.',nota:'Sem decisão, o atrasado entra no caixa desta semana (pior caso). "Não é dívida" (adiantamento ou crédito lançado como conta a pagar): sai do caixa e fica para corrigir no Santri. "Renegociado": por enquanto o valor inteiro cai na data informada, as parcelas entram quando o cadastro de dívidas existir.'});
 }
 document.addEventListener('click',async e=>{
   const t=e.target; if(!t.closest) return;

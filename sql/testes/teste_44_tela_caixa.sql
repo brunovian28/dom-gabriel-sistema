@@ -29,7 +29,7 @@ begin
   select id into t_h  from public.titulos_santri where codigo='TESTE-h';  select id into t_o  from public.titulos_santri where codigo='TESTE-o';
   insert into public.titulos_tratativa(titulo_id,decisao,nova_data) values (t_c,'pagar_em','2026-11-20'),(t_c2,'pagar_em','2026-11-01'),(t_d,'em_disputa',null),(t_e,'nao_e_divida',null);
   -- g: pago por baixa depois da última foto
-  insert into public.baixas_santri(lado,loja_id,baixa,ativo) values ('pagar',1,'TESTE-BX',true) returning id into bx;
+  insert into public.baixas_santri(lado,loja_id,baixa,data_baixa,ativo) values ('pagar',1,'TESTE-BX',(now() at time zone 'America/Cuiaba')::date + 1,true) returning id into bx;
   insert into public.baixas_santri_titulos(baixa_id,ordem,cod_financeiro,valor_baixado,ativo) values (bx,1,'TESTE-g',60,true);
 
   -- a receber

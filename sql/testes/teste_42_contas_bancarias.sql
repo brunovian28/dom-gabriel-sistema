@@ -17,12 +17,14 @@ begin
   perform public.salvar_conta_bancaria(c2, 1::smallint, 'BANCO TESTE', 'Conta B', false);
   assert (select sum(saldo) from interno.saldo_caixa(array[1]::smallint[])) = 1500, 'FALHOU: conta inativa fora da soma';
 
-  -- Compras continua funcionando: grava na conta Geral da loja (reativa ou cria)
-  perform public.informar_saldo_caixa(1::smallint, 300, null);
-  assert (select sum(saldo) from interno.saldo_caixa(array[1]::smallint[])) = 1800, 'FALHOU: informar_saldo_caixa na Geral';
+  -- saldo da loja inteira não é mais aceito (somaria com as contas, migration 46)
+  ok := false;
+  begin perform public.informar_saldo_caixa(1::smallint, 300, null); exception when others then ok := true; end;
+  assert ok, 'FALHOU: informar_saldo_caixa deveria recusar';
+  assert (select sum(saldo) from interno.saldo_caixa(array[1]::smallint[])) = 1500, 'FALHOU: soma sem a Geral';
 
   -- tela_compras segue com o formato do saldo
-  assert (select (public.tela_compras(1::smallint)->'caixa'->0->'saldo'->>'saldo')::numeric) = 1800, 'FALHOU: tela_compras soma contas';
+  assert (select (public.tela_compras(1::smallint)->'caixa'->0->'saldo'->>'saldo')::numeric) = 1500, 'FALHOU: tela_compras soma contas';
 
   perform public.salvar_parametros_caixa(1::smallint, 9900);
   assert (select caixa_minimo from public.caixa_parametros where loja_id = 1) = 9900, 'FALHOU: caixa minimo';

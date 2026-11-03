@@ -19,7 +19,9 @@ Ordem de construção: **base comum** (classificação do plano de contas, statu
 ### Pendências técnicas do plano 1 da F2 (02/11/2026)
 - Atrasado marcado "Não é dívida" some da lista e não há tela para desfazer nem para listar as tarefas "corrigir no Santri".
 - Conta bancária desativada não tem botão de reativar.
-- Revisão da Claude Opus nas regras de dinheiro (`interno.caixa_movimentos`, `interno.caixa_projecao`).
+- ~~Revisão da Claude Opus nas regras de dinheiro~~ feita em 02/11/2026 (migration 46: baixa parcial e saldo em dobro).
+- **Para o plano 3 (dívidas):** ~56% do atrasado a pagar são parcelamentos (grupo Dívida) e ~24% impostos, a maioria com mais de 60 dias. Sem triagem caem todos na semana 0 (pior caso, como na spec). "Renegociado" hoje põe o valor inteiro na data informada: no plano 3 deve virar parcelas do cadastro de dívidas.
+- `statement_timeout 60s` dentro das funções do caixa não vale: o limite real é 8 s do papel `authenticated`. Hoje `tela_caixa(0)` leva ~2 s; medir de novo a cada plano.
 
 ### Tarefas do Bruno (fora do sistema, antes/durante a F2)
 1. Organizar e aprender a parametrizar a antecipação do cartão no Santri.

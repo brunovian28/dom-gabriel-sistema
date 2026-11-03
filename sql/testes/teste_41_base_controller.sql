@@ -29,7 +29,7 @@ begin
     values ('pagar',1,'TESTE-B','Aberto','2026-10-20',20,20,'Dup',imp,imp) returning id into tb;
   insert into public.titulos_santri(lado,loja_id,codigo,situacao,vencimento,saldo,valor_documento,tipo,ultima_importacao_id,importacao_id)
     values ('pagar',1,'TESTE-C','Aberto','2026-10-25',30,30,'Dup',imp,imp) returning id into tc;
-  insert into public.baixas_santri(lado,loja_id,baixa,ativo) values ('pagar',1,'TESTE-B1',true) returning id into bx;
+  insert into public.baixas_santri(lado,loja_id,baixa,data_baixa,ativo) values ('pagar',1,'TESTE-B1',(now() at time zone 'America/Cuiaba')::date + 1,true) returning id into bx;
   insert into public.baixas_santri_titulos(baixa_id,ordem,cod_financeiro,valor_baixado,ativo) values (bx,1,'TESTE-C',30,true);
 
   select * into r from interno.titulos_status('pagar','2026-11-04') where titulo_id = ta;

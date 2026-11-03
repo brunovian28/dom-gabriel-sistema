@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 45** (a próxima é a 46 — avise antes de criar).
+**Última migration: 46** (a próxima é a 47 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 02/11/2026 | Bruno (Claude) | Revisão do plano 1 da F2: baixa parcial não marca mais o título como pago (só baixas depois da foto contam e o parcial é descontado) · saldo do caixa só por conta bancária (Compras leva para Caixa › Saldos, fim do saldo em dobro) · funções internas do caixa fechadas para anon | 46 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Segurança: RPCs novas do Caixa fechadas para anon e public (REVOKE). Regra nova: toda função public.* termina com revoke + grant authenticated | 45 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Tela Caixa: aba Saldos (contas bancárias, informar saldos, caixa mínimo). Fecha o plano 1 da F2 | — | ver git log |
 | 02/11/2026 | Bruno (Claude) | Tela Caixa: aba Atrasados a pagar com triagem em lote | — | ver git log |
