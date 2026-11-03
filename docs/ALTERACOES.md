@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 60d** (a próxima é a 61 — avise antes de criar).
+**Última migration: 61** (a próxima é a 62 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Sonnet) | Pedidos, revisão final: `tela_pedidos` devolve o `capa_id` da capa (botão Capa abria a capa errada), `salvar_datas_pedido` espelha as datas não nulas em `pedidos` (null não apaga a da capa), a capa envia só o campo que mudou, previsão igual à do Santri não vira data do sistema, corrida no Lançar e capa da loja errada corrigidas, botão Datas só para quem pode salvar | 61 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Lançar pedido: previsão de entrega, data que o cliente precisa e formas de pagamento do Santri já vêm preenchidas (`dados_lancar_pedido`); lançar e editar datas na capa do pedido também gravam em `pedido_datas` (`salvar_datas_pedido`), com aviso se a sincronização falhar | — | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Tela Pedidos nova (`#/pedidos`): monta sozinha pela RPC `tela_pedidos`, com indicadores por etapa e por alerta no topo, busca, filtro de entregues (30 dias) e "Fechar manifesto", e edição de previsão e "cliente precisa" na própria linha (`salvar_datas_pedido`, com aviso para atualizar no Santri). Sai o cartão de pendências não lançadas e o seletor de loja próprio (usa "Ver loja") | — | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: RPC `tela_pedidos` calcula etapa, entrega e alertas pelo Santri (e `interno.pedidos_mercadoria`); 60b ajusta a data de entrega, 60c fecha `interno.pedidos_mercadoria` para anon, 60d regra de entregue (A/B/C), manifesto e alerta `fechar_manifesto` | 60, 60b, 60c, 60d | ver git log |

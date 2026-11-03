@@ -126,6 +126,7 @@ window.addEventListener('unhandledrejection',e=>erro(e.reason||e));
 
 let EU=null, LOJAS=[], OP={}, CAPA=null;
 const ehDirecao = () => ['admin','direcao'].includes(EU?.papel);
+const podeAlterarDatas = () => ['gerente','logistica','direcao','admin','vendedor'].includes(EU?.papel); // mesmos papéis de salvar_datas_pedido
 
 // ================= LOGIN =================
 let modoCriar=false;
@@ -329,9 +330,12 @@ function ligarCampos(root){
           if(ab&&ab.length) toast(ab.length+' orçamento(s) em negociação marcados como perdidos'); } }
       toast('Salvo ✓'); if(CAPA&&$('#resumo')) atualizarResumo();
       if(t==='pedidos'&&(f==='previsao_entrega'||f==='data_cliente_precisa')){ // espelha as duas datas na tela Pedidos
-        const {data:pp,error:e3}=await sb.from('pedidos').select('loja_id,numero_santri,previsao_entrega,data_cliente_precisa').eq('id',id).single();
+        const {data:pp,error:e3}=await sb.from('pedidos').select('loja_id,numero_santri').eq('id',id).single();
         if(e3||!pp) return erro(e3||{message:'Não achei o pedido para sincronizar as datas'});
-        await sincronizarDatasPedido(pp.loja_id,pp.numero_santri,pp.previsao_entrega,pp.data_cliente_precisa); }
+        const num=String(pp.numero_santri).replace(/\./g,''); // só o campo que mudou vai da capa, o outro vem de pedido_datas (não sobrescreve data nova da tela Pedidos)
+        const {data:pd}=await sb.from('pedido_datas').select('previsao_entrega,data_cliente_precisa').eq('loja_id',pp.loja_id).eq('numero',num).maybeSingle();
+        const dPrev=f==='previsao_entrega'?v:(pd?.previsao_entrega??null), dPrec=f==='data_cliente_precisa'?v:(pd?.data_cliente_precisa??null);
+        await sincronizarDatasPedido(pp.loja_id,pp.numero_santri,dPrev,dPrec); }
     });
   });
 }
@@ -1147,9 +1151,11 @@ async function revisarPedido(r,file,santri){
   if(!orc) avisos.push(`Não achei nesta capa o orçamento nº ${esc(c.numero)}. O pedido fica ligado só à capa (confira se é a capa certa).`);
   const cond=PED.conds.find(x=>normCond(x.nome)===normCond(c.condicao_pagamento))||null;
   if(!cond&&!santri) avisos.push(`A condição "${esc(c.condicao_pagamento||'')}" não está no cadastro de condições. Escolha a mais parecida abaixo.`);
-  PED.novo={file,r,orc,santri,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
+  const tok=PED.novo={file,r,orc,santri,itens:r.itens.map((i,ix)=>({...i,ref:ix+1}))};
   let pre=null; // datas e formas de pagamento que o Santri já tem (só para pedido que vem do Santri; se falhar, o formulário abre em branco)
   if(santri){ try{ pre=await rpcJ('dados_lancar_pedido',{p_loja:CAPA.c.loja_id,p_numero:String(santri.numero).replace(/\D/g,'')}); }catch(e){ console.error(e); toast('Não consegui buscar as datas do Santri: '+(e.message||e)); } }
+  if(PED?.novo!==tok) return; // outro pedido foi aberto enquanto esperava: ignora esta resposta
+  tok.pre=pre;
   const bands=[...new Set(PED.tx.map(t=>t.bandeira))];
   const tot=r.totais||{};
   $('#pedRev').innerHTML=`<div style="margin-top:12px">
@@ -1231,7 +1237,8 @@ async function salvarPedido(){
   await sb.from('atividades').insert({capa_id:CAPA.c.id,obra_id:CAPA.ob.id,usuario_id:EU.id,loja_id:CAPA.c.loja_id,tipo:'Outro',
     resumo:`Pedido ${c.numero} fechado: ${brl(n.res.receita)} · MC ${pct(n.res.mc_pct)} · ${c.condicao_pagamento||(cd?.nome)||''}${n.file?'':' (dados do Santri)'}`});
   await vincularClienteSantri(c); atualizarNomeCapa();
-  const falhaSync=await sincronizarDatasPedido(CAPA.c.loja_id,c.numero,prev,precisa,false);
+  const pre=n.pre, prevSis=(pre&&!pre.previsao_sistema&&prev===pre.previsao_santri)?null:prev; // igual à do Santri e sem data no sistema: não congela
+  const falhaSync=await sincronizarDatasPedido(CAPA.c.loja_id,c.numero,prevSis,precisa,false);
   toast('Pedido lançado — complete a capa do pedido'+(falhaSync?'. Atenção: '+falhaSync:'')); PED.novo=null; PED.abrir=p.id; const keep=p.id; await abaPed(); if(!$('#capa_'+keep).innerHTML) capaPedido(keep); if(typeof atualizarResumo==='function') atualizarResumo();
 }
 
@@ -1377,7 +1384,7 @@ function pdLinha(p,r){
   const prev=p.previsao?`<div class="${al.includes('previsao_vencida')?'atras':''}">${dBR(p.previsao).slice(0,5)} <span class="mut" style="font-size:12px">(${p.prev_sistema&&p.previsao===p.prev_sistema?'sistema':'Santri'})</span></div>`:'';
   const ent=`${esc(PD_ENTREGA_TXT[p.entrega]||p.entrega||'')}${p.etapa==='entregue'&&p.entregue_em?' '+dBR(p.entregue_em).slice(0,5):''}${prev}`;
   const dias=p.dias??pdDias(r.hoje||hojeLocalJ(),p.fechamento);
-  const acaoH=`<button class="sec" data-datas="${p.venda_id}">Datas</button>${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
+  const acaoH=`${podeAlterarDatas()?`<button class="sec" data-datas="${p.venda_id}">Datas</button>`:''}${!p.lancado?`<button class="gold" data-vlanc="${p.venda_id}">Lançar</button>`:p.capa_id?`<button class="sec" data-capa="${p.capa_id}">Capa</button>`:''}`;
   let h=`<tr data-v="${esc(p.numero)}"><td style="white-space:nowrap"><b>${esc(fmtNum(p.numero))}</b> <span class="mut">${esc(l)}</span><div class="pdAcMob">${acaoH}</div></td><td>${esc(p.cliente||'')}</td><td>${esc((p.vendedor||'').split(' ')[0])}</td>
     <td>${dBR(p.fechamento)}</td><td class="${dias>60&&p.etapa!=='entregue'?'atras':''}">${dias}</td><td>${pgto}</td><td>${merc}</td><td>${ent}</td><td>${p.precisa?dBR(p.precisa).slice(0,5):'<span class="mut">—</span>'}</td>
     <td>${al.map(a=>`<div style="margin:1px 0">${pillJ(PD_ALERTA_TXT[a]||a,PD_ALERTA_COR[a]||'#888')}</div>`).join('')}</td><td class="pdAcDesk"><div style="display:flex;flex-direction:column;gap:4px;align-items:stretch">${acaoH}</div></td></tr>`;
@@ -1409,7 +1416,8 @@ function pdLigar(){
   const s=$('#pdSalvar'); if(s) s.onclick=async()=>{
     const p=PDC.r.pedidos.find(x=>x.venda_id===+s.dataset.sv); if(!p) return;
     const prev=$('#pdPrev').value||null, prec=$('#pdPrec').value||null; s.disabled=true;
-    try{ await rpcJ('salvar_datas_pedido',{p_loja:p.loja_id,p_numero:p.numero,p_previsao:prev,p_precisa:prec}); }catch(e){ s.disabled=false; return erro(e); }
+    const prevSis=(!p.prev_sistema&&prev===p.prev_santri)?null:prev; // sem data no sistema e igual à do Santri: não congela a do Santri como data do sistema
+    try{ await rpcJ('salvar_datas_pedido',{p_loja:p.loja_id,p_numero:p.numero,p_previsao:prevSis,p_precisa:prec}); }catch(e){ s.disabled=false; return erro(e); }
     PDF_.editando=null;
     toast(prev&&prev!==p.prev_santri?'Datas salvas. Atualize a previsão também no Santri.':'Datas salvas');
     telaPedidos();
@@ -1419,6 +1427,7 @@ async function abrirParaLancar(id){
   const {data:v}=await sb.from('vendas_santri').select('numero,cliente_codigo,cliente_nome,loja_id').eq('id',id).single(); if(!v) return;
   let capas=[];
   const {data:os}=await sb.from('orcamentos').select('capa_id').in('numero_santri',[v.numero,fmtNum(v.numero)]); capas=(os||[]).map(o=>o.capa_id);
+  if(capas.length){ const {data:cl}=await sb.from('capas').select('id').in('id',capas).eq('loja_id',v.loja_id); const okc=new Set((cl||[]).map(c=>c.id)); capas=capas.filter(c=>okc.has(c)); } // mesmo número em PVA e RV: só capas da loja da venda
   if(v.cliente_codigo){ const {data:ps}=await sb.from('pessoas').select('id').eq('codigo_santri',v.cliente_codigo);
     if(ps&&ps.length){ const {data:ops}=await sb.from('obra_pessoas').select('obra_id').in('pessoa_id',ps.map(p=>p.id));
       if(ops&&ops.length){ const {data:cs}=await sb.from('capas').select('id').in('obra_id',ops.map(o=>o.obra_id)).eq('loja_id',v.loja_id).order('criado_em',{ascending:false}); capas=capas.concat((cs||[]).map(c=>c.id)); } } }
