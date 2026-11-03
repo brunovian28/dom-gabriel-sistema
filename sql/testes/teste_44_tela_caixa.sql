@@ -16,6 +16,9 @@ begin
   perform public.salvar_parametros_caixa(1::smallint, 9900);
   insert into public.plano_contas_classe(plano_codigo, plano_nome, grupo_caixa) values ('TESTE.FORA','CONTA DE TESTE','fora');
 
+  -- uma venda em 2030 empurra a janela do perfil para longe das vendas reais: sem perfil, não há RT/impostos estimados misturando com este teste
+  insert into public.vendas_santri(loja_id,tipo,numero,data_fechamento,vlr_liquido,custo_compra_santri,resultado) values (1,'PED','TESTE-FUTURO', make_timestamp(2030,12,31,12,0,0), 1, 1, '{}'::jsonb);
+
   -- a pagar (plano TESTE.FORN cai na heurística: fornecedor)
   insert into public.titulos_santri(lado,loja_id,codigo,situacao,vencimento,saldo,valor_documento,tipo,plano_codigo,plano_nome,nome,ultima_importacao_id,importacao_id)
   select 'pagar', v.loja, 'TESTE-'||v.c, 'Aberto', v.venc::date, v.saldo, v.saldo, v.tipo, coalesce(v.plano,'TESTE.FORN'), case when v.plano is null then 'FORNECEDORES' else 'CONTA DE TESTE' end, 'FORNECEDOR '||v.c, ip, ip
@@ -62,7 +65,7 @@ begin
   assert exists (select 1 from interno.caixa_movimentos(array[2]::smallint[], h, 'triagem') where titulo_id = t_o), 'FALHOU o em loja 2';
 
   -- tela_caixa
-  r := public.tela_caixa(1::smallint, 'triagem', h);
+  r := public.tela_caixa(1::smallint, 'triagem', 'zero', null, h);
   assert (r->'saldo'->>'informado')::boolean and (r->'saldo'->>'total')::numeric = 10000, 'FALHOU saldo';
   assert jsonb_array_length(r->'semanas') = 13 and jsonb_array_length(r->'meses') = 12, 'FALHOU tamanhos';
   assert (r->'semanas'->0->>'saldo_fim')::numeric = 9750, 'FALHOU semana 0 = ' || (r->'semanas'->0->>'saldo_fim');
@@ -79,24 +82,24 @@ begin
   assert (r->'semanas'->0->'grupos'->>'fornecedor')::numeric = -250, 'FALHOU grupos semana 0';
   assert jsonb_array_length(r->'por_loja') = 1 and (r->'por_loja'->0->>'atrasado_pagar')::numeric = 950, 'FALHOU por_loja 1';
   -- duas lojas: a loja sem saldo informado derruba o "informado" do total
-  r := public.tela_caixa(0::smallint, 'triagem', h);
+  r := public.tela_caixa(0::smallint, 'triagem', 'zero', null, h);
   assert jsonb_array_length(r->'por_loja') = 2, 'FALHOU por_loja 2 lojas';
   assert (r->'por_loja'->0->>'atrasado_pagar')::numeric = 950 and (r->'por_loja'->1->>'atrasado_pagar')::numeric = 0, 'FALHOU por_loja valores';
   assert not (r->'saldo'->>'informado')::boolean and r->'saldo'->'lojas_sem_saldo' = '[2]'::jsonb, 'FALHOU loja 2 sem saldo';
   -- pagar_tudo
-  r := public.tela_caixa(1::smallint, 'pagar_tudo', h);
+  r := public.tela_caixa(1::smallint, 'pagar_tudo', 'zero', null, h);
   assert (r->'semanas'->0->>'saldo_fim')::numeric = 9050, 'FALHOU pagar_tudo semana 0 = ' || (r->'semanas'->0->>'saldo_fim');
   -- detalhe
-  assert jsonb_array_length(public.caixa_detalhe(1::smallint, 'fornecedor', '2026-11-09', '2026-11-15', 'triagem', h)) = 1, 'FALHOU detalhe';
+  assert jsonb_array_length(public.caixa_detalhe(1::smallint, 'fornecedor', '2026-11-09', '2026-11-15', 'triagem', 'zero', null, h)) = 1, 'FALHOU detalhe';
   -- sem saldo informado (Review Focus 3)
   update public.contas_bancarias set ativo = false where id = conta;
-  r := public.tela_caixa(1::smallint, 'triagem', h);
+  r := public.tela_caixa(1::smallint, 'triagem', 'zero', null, h);
   assert not (r->'saldo'->>'informado')::boolean, 'FALHOU informado=false';
   assert jsonb_typeof(r->'kpi'->'primeira_abaixo') = 'null', 'FALHOU primeira_abaixo sem saldo';
 
   -- usuário financeiro de uma loja só (Review Focus 4)
   update public.usuarios set papel = 'financeiro', loja_id = 2, todas_lojas = false where id = adm;
-  r := public.tela_caixa(0::smallint, 'triagem', h);
+  r := public.tela_caixa(0::smallint, 'triagem', 'zero', null, h);
   assert r->'lojas' = '[2]'::jsonb, 'FALHOU lojas do financeiro RV = ' || (r->>'lojas');
 
   raise exception 'OK-ROLLBACK';
