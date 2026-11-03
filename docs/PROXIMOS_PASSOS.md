@@ -28,7 +28,7 @@ Ordem de construção: **base comum** (classificação do plano de contas, statu
 2. ~~Descobrir onde está lançada a comissão~~ respondido 02/11/2026: paga na folha (entra no custo fixo de salários).
 3. Primeira carga do cadastro de dívidas (contratos, saldos, taxas).
 4. Definir o caixa mínimo de cada loja.
-5. Revisar o rascunho da classificação do plano de contas (a Claude prepara).
+5. Revisar o rascunho da classificação do plano de contas (Direção › Plano de contas). Agora pesa no caixa: conta marcada "fixa recorrente" vira média mensal projetada pelos 12 meses. Começar por **DESPESA NÃO DEDUTIVEL** (a maior estimativa de fixo depois de salários: se não se repete todo mês, desmarcar "fixa").
 6. Retomar a importação semanal (relatórios parados em 16/10).
 
 ## 1. Funil do cliente numa página só (ideia do Bruno, 20/10)
