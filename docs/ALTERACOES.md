@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 52** (a próxima é a 53 — avise antes de criar).
+**Última migration: 53** (a próxima é a 54 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 2: parcelas de dívida fora do Santri na projeção e entre lojas espelhado e fora do Total; códigos das lojas no Santri gravados | 53 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 3, Task 1: cadastro de dívidas (contratos, parcelas, eventos), ligação ao Santri e códigos das lojas no Santri | 52 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Revisão do plano 2 da F2: rascunho do plano de contas corrigido. Compra de mercadoria vira fornecedor (contava em dobro com o custo das vendas futuras), investimento e formas de pagamento saem do custo fixo, CSLL vai para impostos | 51 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Tela Caixa: chaves "Vendas futuras" e "% à vista", valores estimados marcados com ◐, linha Vendas futuras, detalhe com estimativas e dias de pagar a RT e os impostos. Fecha o plano 2 da F2 | — | ver git log |
