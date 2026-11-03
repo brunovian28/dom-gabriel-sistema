@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 66** (a próxima é a 67 — avise antes de criar).
+**Última migration: 67** (a próxima é a 68 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Opus) | Pedidos: nota de "Entregas agrupadas" (uma nota para várias ordens de entrega do mesmo cliente) passa a marcar as entregas certas: pelo nº do pedido na observação ou, sem ele, pelas entregas do mesmo cliente nos 30 dias antes da nota. Pedidos com remessa 505 → 549, em aberto 207 → 203 | 67 | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Primeira carga das notas fiscais (18.885 notas, jul/2022 a nov/2026) conferida. A remessa só marca entregue quando o cliente da nota é o mesmo da entrega: as "Entregas agrupadas" usam outra numeração e ligavam a pedidos de outros clientes (8 de 874 certas; nas "Entregas", 9.240 de 9.240). Tela Pedidos: 207 em aberto, 350 dos 376 de "fechar manifesto" têm remessa | 66 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Notas fiscais, correções da revisão final: a regra "sumiu" só vale para o tipo de movimento que veio no arquivo (exportar só Entregas não desativa mais as devoluções por cancelamento, que fariam a remessa cancelada valer na tela Pedidos) · Importadora bloqueia arquivo com situação cancelada/denegada/inutilizada, avisa em texto neutro quando notas não vieram e pede confirmação se sumirem mais que max(5, 2%) · "como exportar" ampliado | 65 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Pedidos: nota de remessa marca a entrega real. `tela_pedidos` liga `notas_saida` (Entregas/Entregas agrupadas, sem `Dev. por canc. de entrega`) às entregas do Santri: remessa fora das pendentes = entregue na data da emissão, remessa nas pendentes = parcial. JSON ganha `remessa_em` e `remessa_nf`, e a coluna Entrega mostra "Saiu dd/mm · NF n". Regras A/B/C só para pedido sem remessa. | 64 | ver git log |
