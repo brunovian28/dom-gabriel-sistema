@@ -2180,8 +2180,8 @@ function cxAtrMarcados(){ const m=CX.marcados, r=CX.cache?.r;
 function abaAtrasadosCx(r){
   const m=CX.marcados, f=CX.filtro, lista=r.atrasados||[];
   const n=k=>lista.filter(x=>cxPertence(x,k)).length;
-  const pill=x=>x.decisao?pillJ(CX_TRIAGEM[x.decisao]||x.decisao,CX_DEC_COR[x.decisao]||'#888')+(x.nova_data?` <span class="mut">${dBR(x.nova_data).slice(0,5)}</span>`:''):pillJ('Sem decisão','var(--quente)');
-  const cols=[['',x=>`<input type="checkbox" class="cxAtrChk" data-id="${x.titulo_id}"${m.has(x.titulo_id)?' checked':''} style="width:20px;height:20px">`,{csv:x=>''}],
+  const pill=x=>x.decisao==='renegociado'?pillJ('renegociado · contrato','var(--ok)'):x.decisao?pillJ(CX_TRIAGEM[x.decisao]||x.decisao,CX_DEC_COR[x.decisao]||'#888')+(x.nova_data?` <span class="mut">${dBR(x.nova_data).slice(0,5)}</span>`:''):pillJ('Sem decisão','var(--quente)');
+  const cols=[['',x=>x.decisao==='renegociado'?'':`<input type="checkbox" class="cxAtrChk" data-id="${x.titulo_id}"${m.has(x.titulo_id)?' checked':''} style="width:20px;height:20px">`,{csv:x=>''}],
     ['Loja',x=>esc(lojaCodJ(x.loja))],['Nome',x=>esc(x.nome||'')],['Conta',x=>esc(x.plano_nome||'')],['Vencimento',x=>dBR(x.vencimento)],
     ['Dias',x=>`<span class="${x.dias>30?'atras':''}">${x.dias}</span>`,{r:1,csv:x=>x.dias}],['Valor',x=>`<b>${brl0(x.saldo)}</b>`,{r:1,csv:x=>nCsv(x.saldo)}],
     ['Decisão',x=>pill(x),{csv:x=>CX_TRIAGEM[x.decisao]||'sem decisão'}],['Nota',x=>esc(x.nota||'')]];
@@ -2189,7 +2189,7 @@ function abaAtrasadosCx(r){
       <span class="chave">${CX_FILTROS.map(([k,t])=>`<button class="${f===k?'on':''}" data-cxfil="${k}">${t} (${n(k)})</button>`).join('')}</span></div>
     <div class="linha" style="margin-top:10px;align-items:flex-end">
       <div style="min-width:210px"><label style="margin-top:0">Decisão para os marcados</label><select id="cxAtrDec"><option value="">Escolha…</option>
-        <option value="pagar_em">Pagar em</option><option value="renegociado">Renegociado (1ª parcela em)</option><option value="em_disputa">Em disputa</option>
+        <option value="pagar_em">Pagar em</option><option value="renegociado">Renegociado (vira parcelas)</option><option value="em_disputa">Em disputa</option>
         <option value="nao_e_divida">Não é dívida (corrigir no Santri)</option><option value="para_diretoria">Para a diretoria</option></select></div>
       <div id="cxAtrDataBox" class="hide"><label style="margin-top:0">Data</label><input type="date" id="cxAtrData"></div>
       <div style="flex:1;min-width:160px"><label style="margin-top:0">Nota (opcional)</label><input id="cxAtrNota" placeholder="ex.: combinado com o fornecedor"></div>
@@ -2203,21 +2203,25 @@ document.addEventListener('click',async e=>{
   const fil=t.closest('[data-cxfil]'); if(fil){ CX.filtro=fil.dataset.cxfil; return telaCaixaJ(true); }
   const tr=t.closest('#lj_cxAtr tr');
   if(tr&&!t.closest('input,select,button,a')){ const c=tr.querySelector('.cxAtrChk'); if(c){ c.checked=!c.checked; c.dispatchEvent(new Event('change',{bubbles:true})); } return; }
-  if(t.id==='cxAtrTodos'){ const r=CX.cache?.r; if(!r) return; cxAtrFiltrados(r).forEach(x=>CX.marcados.add(x.titulo_id)); document.querySelectorAll('#lj_cxAtr .cxAtrChk').forEach(c=>c.checked=true); return cxAtrMarcados(); }
+  if(t.id==='cxAtrTodos'){ const r=CX.cache?.r; if(!r) return; cxAtrFiltrados(r).filter(x=>x.decisao!=='renegociado').forEach(x=>CX.marcados.add(x.titulo_id)); document.querySelectorAll('#lj_cxAtr .cxAtrChk').forEach(c=>c.checked=true); return cxAtrMarcados(); }
   if(t.id==='cxAtrLimpa'){ CX.marcados.clear(); document.querySelectorAll('#lj_cxAtr .cxAtrChk').forEach(c=>c.checked=false); return cxAtrMarcados(); }
   if(t.id==='cxAtrAplicar'){
     const ids=[...CX.marcados], dec=$('#cxAtrDec').value, data=$('#cxAtrData').value;
     if(!ids.length) return toast('Marque ao menos um título');
     if(!dec) return toast('Escolha a decisão');
-    if(['pagar_em','renegociado'].includes(dec)&&!data) return toast('Informe a data');
-    try{ await rpcJ('tratar_titulos',{p_ids:ids,p_decisao:dec,p_nova_data:['pagar_em','renegociado'].includes(dec)?data:null,p_nota:$('#cxAtrNota').value.trim()||null}); }catch(err){ return erro(err); }
+    if(dec==='renegociado'){ const r=CX.cache?.r, its=(r?.atrasados||[]).filter(x=>CX.marcados.has(x.titulo_id));
+      if(new Set(its.map(x=>x.loja)).size>1) return toast('Renegociar só títulos da mesma loja');
+      if(its.some(x=>x.decisao==='renegociado')) return toast('Título já renegociado');
+      return modalRenegociarCx(its); }
+    if(dec==='pagar_em'&&!data) return toast('Informe a data');
+    try{ await rpcJ('tratar_titulos',{p_ids:ids,p_decisao:dec,p_nova_data:dec==='pagar_em'?data:null,p_nota:$('#cxAtrNota').value.trim()||null}); }catch(err){ return erro(err); }
     toast('Decisão gravada'); CX.marcados.clear(); CX.cache=null; telaCaixaJ();
   }
 });
 document.addEventListener('change',e=>{
   const s=e.target; if(!s.classList) return;
   if(s.classList.contains('cxAtrChk')){ const id=+s.dataset.id; if(s.checked) CX.marcados.add(id); else CX.marcados.delete(id); return cxAtrMarcados(); }
-  if(s.id==='cxAtrDec') $('#cxAtrDataBox').classList.toggle('hide',!['pagar_em','renegociado'].includes(s.value));
+  if(s.id==='cxAtrDec') $('#cxAtrDataBox').classList.toggle('hide',s.value!=='pagar_em');
 });
 // Aba "Saldos": contas bancárias por loja, último saldo informado e caixa mínimo
 const numCx=s=>{ s=String(s||'').trim(); if(!s) return null; s=s.replace(/[R$\s]/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); const n=Number(s); return isFinite(n)?n:NaN; };
@@ -2375,6 +2379,44 @@ document.addEventListener('change',async e=>{
     const cods=s.value.split(',').map(x=>x.trim()).filter(Boolean);
     try{ await rpcJ('salvar_cadastros_loja',{p_loja:+s.dataset.l,p_cadastros:cods}); }catch(err){ return erro(err); }
     toast('Códigos salvos'); CX.cache=null; CX.div=null; telaCaixaJ(); }
+});
+
+// Renegociar: vira um contrato com N parcelas (os títulos marcados saem da projeção e as parcelas entram, na aba Dívidas)
+function modalRenegociarCx(its){
+  const total=its.reduce((t,x)=>t+Number(x.saldo||0),0), maior=[...its].sort((a,b)=>Number(b.saldo)-Number(a.saldo))[0];
+  CX.ren={ids:its.map(x=>x.titulo_id),total,editou:false};
+  $('#modal').innerHTML=`<div class="modal"><div class="card" style="max-width:520px"><h3>Renegociar</h3>
+    <p class="mut">${its.length} título${its.length>1?'s':''} · total <b>${brl0(total)}</b>. Os títulos saem da projeção e as parcelas entram no lugar (aba Dívidas). Para desfazer, desative o contrato lá.</p>
+    <label>Credor</label><input id="cxRenCredor" value="${esc(maior?.nome||'')}">
+    <div class="g2"><div><label>Tipo</label><select id="cxRenTipo">${CX_TIPOS_DIV.filter(x=>x[0]!=='entre_lojas').map(([k,t])=>`<option value="${k}"${k==='outro'?' selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>Número de parcelas</label><input id="cxRenN" type="number" min="1"></div></div>
+    <div class="g2"><div><label>1º vencimento</label><input type="date" id="cxRenPrimeiro"></div>
+      <div><label>Valor da parcela</label><input id="cxRenParcela" inputmode="decimal" placeholder="total ÷ parcelas"></div></div>
+    <p class="mut" id="cxRenResumo" style="margin:4px 0"></p>
+    <label>Taxa % ao mês (opcional)</label><input id="cxRenTaxa" inputmode="decimal"><label>Nota (opcional)</label><input id="cxRenNota">
+    <div class="linha" style="margin-top:12px"><button id="cxRenSalvar">Renegociar</button><button class="sec" id="cxRenX">Cancelar</button></div></div></div>`;
+}
+function resumoRenCx(){ const n=parseInt($('#cxRenN').value,10), pv=$('#cxRenPrimeiro').value, el=$('#cxRenResumo'); if(!el) return;
+  const parc=numCx($('#cxRenParcela').value);
+  el.textContent=n>0&&parc?`${n} × ${brl0(parc)}${pv?' a partir de '+dBR(pv):''} = ${brl0(n*parc)}`:''; }
+document.addEventListener('input',e=>{
+  const s=e.target; if(!s.id||!CX.ren) return;
+  if(s.id==='cxRenParcela') CX.ren.editou=true;
+  if((s.id==='cxRenN')&&!CX.ren.editou){ const n=parseInt(s.value,10); $('#cxRenParcela').value=n>0?(CX.ren.total/n).toLocaleString('pt-BR',{minimumFractionDigits:2,useGrouping:false}):''; }
+  if(['cxRenN','cxRenPrimeiro','cxRenParcela'].includes(s.id)) resumoRenCx();
+});
+document.addEventListener('click',async e=>{
+  const t=e.target; if(!t.id) return;
+  if(t.id==='cxRenX'){ CX.ren=null; return $('#modal').innerHTML=''; }
+  if(t.id==='cxRenSalvar'&&CX.ren){
+    const n=parseInt($('#cxRenN').value,10), pv=$('#cxRenPrimeiro').value, parc=numCx($('#cxRenParcela').value), taxa=numCx($('#cxRenTaxa').value);
+    if(!(n>0)) return toast('Informe o número de parcelas');
+    if(!pv) return toast('Informe o 1º vencimento');
+    if(!parc||Number.isNaN(parc)||parc<=0) return toast('Informe o valor da parcela');
+    if(Number.isNaN(taxa)) return toast('Taxa inválida');
+    try{ await rpcJ('renegociar_titulos',{p_ids:CX.ren.ids,p_dados:{credor:$('#cxRenCredor').value.trim()||null,tipo:$('#cxRenTipo').value,parcela:parc,primeiro_venc:pv,n_parcelas:n,taxa_mes:taxa,nota:$('#cxRenNota').value.trim()||null}}); }catch(err){ return erro(err); }
+    CX.ren=null; CX.marcados.clear(); $('#modal').innerHTML=''; toast('Renegociação gravada: as parcelas estão na aba Dívidas'); CX.cache=null; CX.div=null; telaCaixaJ();
+  }
 });
 async function detalheCx(grupo,col){
   let rows; try{ rows=await rpcJ('caixa_detalhe',{p_loja:lojaJ(),p_grupo:grupo,p_ini:col.ini,p_fim:col.fim,p_atrasados:CX.atrasados,p_vendas:CX.vendas,p_entrada_pct:CX.entrada}); }catch(e){ return erro(e); }

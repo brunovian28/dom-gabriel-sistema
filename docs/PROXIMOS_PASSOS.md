@@ -8,7 +8,7 @@ Objetivo: dar clareza à diretoria (inclusive aos diretores comerciais) sobre ma
 | # | Entrega | Situação |
 |---|---|---|
 | F1 | DRE gerencial (três momentos da venda) | **desenhada** — `docs/superpowers/specs/2026-11-01-dre-gerencial-design.md`. Não construir ainda |
-| F2 | Fluxo de caixa + contas a pagar e a receber | **planos 1 e 2 construídos (03/11/2026):** base comum, saldos por conta, projeção do lançado, triagem dos atrasados, custo fixo recorrente, vendas futuras com custo, RT e impostos das vendas, chaves "Vendas futuras" e "% à vista" (tela `#/caixa`). Faltam os planos 3–4 (dívidas · a receber/cobrança, foto semanal, Compras lendo a projeção). Desenho: `docs/superpowers/specs/2026-11-02-fluxo-caixa-design.md` |
+| F2 | Fluxo de caixa + contas a pagar e a receber | **planos 1 a 3 construídos (03/11/2026):** base comum, saldos por conta, projeção do lançado, triagem dos atrasados, custo fixo recorrente, vendas futuras com custo, RT e impostos das vendas, chaves "Vendas futuras" e "% à vista", dívidas (contratos, parcelas, curva, "Dívida total"), entre lojas espelhado e fora do Total, e "Renegociado" virando parcelas (tela `#/caixa`). Falta a **carga dos contratos** (Task 7, quando o Bruno e a Ana preencherem a tabela) e o plano 4 (a receber/cobrança, foto semanal, Compras lendo a projeção). Desenho: `docs/superpowers/specs/2026-11-02-fluxo-caixa-design.md` |
 | F3 | Simulador de decisões | depois |
 | C1 | Discurso "juros pago pelo cliente" (tabela à vista × parcelas) | pequena |
 | B1 | Balanço gerencial (reaproveita saldos, títulos, dívidas da F2 + carteira e bens da F1 + estoque) | depois da F1 |
@@ -20,7 +20,6 @@ Ordem de construção: **base comum** (classificação do plano de contas, statu
 - Atrasado marcado "Não é dívida" some da lista e não há tela para desfazer nem para listar as tarefas "corrigir no Santri".
 - Conta bancária desativada não tem botão de reativar.
 - ~~Revisão da Claude Opus nas regras de dinheiro~~ feita em 02/11/2026 (migration 46: baixa parcial e saldo em dobro).
-- **Para o plano 3 (dívidas):** ~56% do atrasado a pagar são parcelamentos (grupo Dívida) e ~24% impostos, a maioria com mais de 60 dias. Sem triagem caem todos na semana 0 (pior caso, como na spec). "Renegociado" hoje põe o valor inteiro na data informada: no plano 3 deve virar parcelas do cadastro de dívidas.
 - `statement_timeout 60s` dentro das funções do caixa não vale: o limite real é 8 s do papel `authenticated`. Hoje `tela_caixa(0)` leva ~2 s; medir de novo a cada plano.
 
 ### Tarefas do Bruno (fora do sistema, antes/durante a F2)
