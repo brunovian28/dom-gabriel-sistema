@@ -285,6 +285,7 @@ async function lerArquivo(f){
   if(TIPO()==='orcamentos') return conferirOrcamentos(rows,f);
   if(TIPO()==='receber_baixas') return conferirBaixas(rows,f,'receber');
   if(TIPO()==='entregas') return conferirEntregas(rows,f);
+  if(TIPO()==='notas_saida') return conferirNotasSaida(rows,f);
   if(TIPO()==='estoque') return conferirEstoque(rows,f);
   if(TIPO()==='financeiro') return conferirFinanceiro(rows,f);
   if(TIPO()==='dre') return conferirDRE(rows,f);
@@ -824,6 +825,43 @@ function lerRelatorioEntregas(rows){
   return {regs:ger.concat(outras),filtros,avisos,erros,qtd,conta};
 }
 
+// ---------- Relação de Notas Fiscais (sintético ou analítico) ----------
+// Antes de cada bloco de loja vem uma linha só com "1 - 1 - PVA" / "2 - 2 - RV"; nota = linha que começa com data dd/mm/aaaa.
+// No analítico, abaixo de cada nota vêm linhas "Produto" e os itens (primeira célula vazia): são ignoradas.
+function lerRelatorioNotasSaida(rows){
+  const {nrm,num,txt,so,data}=L_;
+  const CAB={emissao:'Dt. emissão',cod_nota:'Cód.nota',nr_nota:'Nr.nota',serie:'Série',tipo_doc:'Tipo doc.',cliente:'Cliente / fornecedor',valor:'Valor total',
+    cfop:'CFOP',tipo_mov:'Tipo de movimento',cod_mov:'Cód. movimento',chave:'Chave NFE',peso:'Total peso',usuario:'Usuário inserção',obs:'Observação'};
+  const OBRIG=['emissao','cod_nota','tipo_mov'];
+  const filtros=[], avisos=[], erros=[], regs=[]; let H=null, loja=null, rodape=false, semLoja=0, qtdArquivo=null;
+  for(const r of rows){
+    const c0=nrm(r[0]);
+    if(c0==='filtros selecionados'){rodape=true;continue;}
+    if(rodape){ const t=r.map(x=>String(x??'').trim()).filter(Boolean); if(t.length) filtros.push(t.join(' ')); continue; }
+    if(c0==='total:'){ const q=r.map(x=>String(x??'').match(/qtd\.\s*notas fiscais:\s*([\d.]+)/i)).find(Boolean); if(q) qtdArquivo=num(q[1]); continue; }
+    if(/^\d+\s*-\s*\d+\s*-\s*(pva|rv)$/.test(c0)&&r.slice(1).every(x=>!String(x??'').trim())){ loja=L_.loja(r[0]); continue; }
+    if(c0==='dt. emissao'){ if(!H) H=L_.mapear(r,CAB); continue; }
+    if(H&&L_.data(r[0])&&/^\d{2}\/\d{2}\/\d{4}$/.test(String(r[0]).trim())){
+      const g=k=>H[k]!=null?r[H[k]]:'';
+      if(!loja){semLoja++;continue;}
+      const cod=so(g('cod_nota')); if(!cod){continue;}
+      const [cc,cn]=L_.codNome(g('cliente'));
+      const cf=String(g('cfop')).match(/^\s*([\d.]+)/);
+      regs.push({loja_id:loja,cod_nota:cod,nr_nota:so(g('nr_nota')),serie:txt(g('serie')),emissao:data(g('emissao')),tipo_doc:txt(g('tipo_doc')),
+        cliente_codigo:cc,cliente_nome:cn,valor_total:num(g('valor')),cfop:cf?so(cf[1]):null,tipo_movimento:txt(g('tipo_mov')),cod_movimento:so(g('cod_mov')),
+        chave_nfe:txt(g('chave')),peso:num(g('peso')),usuario:txt(String(g('usuario')).replace(/^\d+\s*-\s*/,'')),observacao:txt(g('obs'))});
+    }
+  }
+  if(!H||OBRIG.some(k=>H[k]==null)) erros.push('Não encontrei as notas (colunas Dt. emissão, Cód.nota, Tipo de movimento…). É o relatório Relação de Notas Fiscais?');
+  const f=filtros.map(nrm).join(' | ');
+  const im=f.search(/tipo\(?s?\)? de movimento/);
+  if(im>=0&&!/entrega|pedido/.test(f.slice(im))) avisos.push('O filtro de <b>Tipo de movimento</b> não incluiu <b>Entregas</b> nem <b>Pedido</b>: as remessas ficam de fora. Use todos os tipos.');
+  if(semLoja) avisos.push(`${semLoja} nota(s) sem loja reconhecida (PVA/RV) foram ignoradas.`);
+  const u=L_.unicos(regs,x=>x.loja_id+'|'+x.cod_nota,avisos,'nota');
+  const datas=u.map(x=>x.emissao).filter(Boolean).sort();
+  return {regs:u,filtros,avisos,erros,qtdArquivo,periodo:datas.length?[datas[0],datas[datas.length-1]]:null};
+}
+
 // ---------- Relação de Estoque por Local (uma loja por arquivo, PVA_/RV_ no nome) ----------
 function lerRelatorioEstoque(rows){
   const {nrm,num,txt,so}=L_;
@@ -975,6 +1013,19 @@ function conferirEntregas(rows,f){
   seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
 }
 
+function conferirNotasSaida(rows,f){
+  const r=lerRelatorioNotasSaida(rows); regsNovos=r.regs;
+  iniciarConferencia(f,r.regs.length,'notas'); mostrarFiltros(r);
+  if(bloqueios(r)) return;
+  if(!r.regs.length) return msg('colMsgs','Nenhuma nota encontrada no arquivo.','err');
+  const n=(fn)=>r.regs.filter(fn).length, pva=n(x=>x.loja_id===1), rv=n(x=>x.loja_id===2);
+  const rem=n(x=>/^entregas( agrupadas)?$/i.test(x.tipo_movimento||'')), fat=n(x=>/^pedido$/i.test(x.tipo_movimento||'')), dev=n(x=>/^dev/i.test(x.tipo_movimento||''));
+  const d=s=>s.slice(8,10)+'/'+s.slice(5,7);
+  msg('colMsgs',`Notas no arquivo: <b>${r.regs.length.toLocaleString('pt-BR')}</b> (PVA ${pva} · RV ${rv})${confere(r.regs.length,r.qtdArquivo)} · remessas (entregas) ${rem} · faturamentos ${fat} · devoluções ${dev}`+(r.periodo?` · período ${d(r.periodo[0])} a ${d(r.periodo[1])}`:'')+'.','ok');
+  DEST={imp:'notas_saida',stg:'notas_saida',rpc:'notas_saida'};
+  seguirOuAvisar(r,()=>enviarStagingDados(DEST.imp,regsNovos,DEST.stg));
+}
+
 function conferirEstoque(rows,f){
   const r=lerRelatorioEstoque(rows); regsNovos=r.regs;
   iniciarConferencia(f,r.regs.length,'linhas de estoque (produto × local)'); mostrarFiltros(r);
@@ -1036,6 +1087,12 @@ function previaNovos(data){
     if(data.pendentes_vencidas>0) msg('previaMsgs',`${data.pendentes_vencidas} entrega(s) pendente(s) com a maior previsão já vencida.`,'warn');
     if(data.concluidas_agora>0) msg('previaMsgs',`${data.concluidas_agora} entrega(s) foram concluídas desde a última importação.`,'info');
     msg('previaMsgs','Pendentes e sem agendamento entram como foto de hoje (vale a última importação). A "Data entrega" do Santri é o dia em que a entrega foi gerada, não a entrega ao cliente.','info');
+    return; }
+  if(DEST.rpc==='notas_saida'){
+    $('kpis').innerHTML=k(data.no_arquivo,`notas no arquivo · PVA ${data.pva} · RV ${data.rv}`)+base+k(data.sumiram,'sumiram (não vieram neste período)');
+    msg('previaMsgs',`Emitidas de <b>${d(data.de)} a ${d(data.ate)}</b>. ${data.remessas} remessas, das quais ${data.remessas_ligadas} ligadas a entregas do sistema · ${data.pedidos_faturados??0} faturamentos (Pedido), ${data.pedidos_no_sistema??0} deles nas vendas do sistema.`,'info');
+    if(data.remessas_ligadas<data.remessas) msg('previaMsgs',`${data.remessas-data.remessas_ligadas} remessa(s) não ligam a nenhuma entrega do sistema: importe também o Gerenciamento de Entregas do mesmo período.`,'warn');
+    if(data.sumiram>0) msg('previaMsgs',`${data.sumiram} nota(s) que estavam no sistema não vieram neste arquivo (dentro do mesmo período): foram canceladas/excluídas no Santri, ficam no histórico.`,'warn');
     return; }
   if(DEST.rpc==='estoque'){
     const pl=data.por_local||{};
