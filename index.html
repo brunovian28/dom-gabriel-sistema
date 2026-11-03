@@ -2673,6 +2673,18 @@ async function telaEstoqueJ(){
 }
 
 // ---------- FINANCEIRO ----------
+async function exportarVencidosJ(){
+  const b=$('#finExpVenc'); b.disabled=true; b.textContent='Gerando…';
+  let rows; try{ rows=await rpcJ('exportar_titulos_vencidos',{p_loja:lojaJ()}); }catch(e){ b.disabled=false; b.textContent='Baixar títulos vencidos (planilha)'; return erro(e); }
+  const t=v=>{ let s=String(v??'').replace(/[;\r\n]+/g,' ').trim(); return /^[=+\-@]/.test(s)?"'"+s:s; };
+  const TRI={pagar_em:'Pagar em',nao_e_divida:'Não é dívida',em_disputa:'Em disputa',renegociado:'Renegociado',prometeu:'Cliente prometeu',perdido:'Perdido'};
+  const cols=[['Loja',x=>t(x.loja)],['Lado',x=>t(x.lado)],['Código Santri',x=>t(x.codigo)],['Documento',x=>t(x.documento)],['Nota',x=>t(x.nr_nota)],['Nome',x=>t(x.nome)],['Cadastro',x=>t(x.cadastro)],['Tipo',x=>t(x.tipo)],
+    ['Plano (código)',x=>t(x.plano_codigo)],['Plano',x=>t(x.plano_nome)],['Emissão',x=>dBR(x.emissao)],['Vencimento',x=>dBR(x.vencimento)],['Dias de atraso',x=>x.dias_atraso],['Valor do documento',x=>nCsv(x.valor_documento)],['Saldo em aberto',x=>nCsv(x.saldo_aberto)],
+    ['Pedido',x=>t(x.pedido)],['Portador',x=>t(x.portador)],['Lançado por',x=>t(x.lancado_por)],['Observação',x=>t(x.observacao)],['Triagem no sistema',x=>t(TRI[x.triagem]||x.triagem)],['Nota da triagem',x=>t(x.triagem_nota)],['Análise do financeiro',()=>''],['Ajuste no Santri',()=>'']];
+  const csv=[cols.map(c=>c[0]).join(';')].concat((rows||[]).map(r=>cols.map(c=>c[1](r)??'').join(';'))).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`titulos_vencidos_${lojaJ()?lojaCodJ(lojaJ()):'PVA_RV'}_${hojeLocalJ()}.csv`; a.click();
+  b.disabled=false; b.textContent='Baixar títulos vencidos (planilha)'; toast(`${(rows||[]).length} títulos vencidos baixados`);
+}
 async function telaFinanceiroJ(){
   if(!veFinanceiroJ()) return telaLista();
   $('#conteudo').innerHTML=cabJ('Financeiro')+'<p class="mut">Carregando…</p>';
@@ -2700,8 +2712,10 @@ async function telaFinanceiroJ(){
     :corpoDRE;
   $('#conteudo').innerHTML=cabJ('Financeiro'+lojaSufixo(),fonteJ(d.foto_em,'Contas a pagar/receber'))+
     `<div class="g2"><div class="card"><h3>Contas a pagar em aberto</h3><div class="tbl"><table><tr><th>Categoria</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>${Object.keys(NP).filter(k=>pc[k]).map(k=>`<tr><td>${NP[k]}</td><td style="text-align:right">${pc[k].qtd}</td><td style="text-align:right">${brl0(pc[k].saldo)}</td><td style="text-align:right" class="${pc[k].vencido>0&&!['antecipado','credito'].includes(k)?'atras':''}">${brl0(pc[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a pagar não importadas.</td></tr>'}</table></div></div>
-      <div class="card"><h3>Contas a receber em aberto</h3><div class="tbl"><table><tr><th>De quem</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>${Object.keys(NR).filter(k=>rc[k]).map(k=>`<tr><td>${NR[k]}</td><td style="text-align:right">${rc[k].qtd}</td><td style="text-align:right">${brl0(rc[k].saldo)}</td><td style="text-align:right">${brl0(rc[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a receber não importadas.</td></tr>'}</table></div><p class="mut"><a href="#/recebimentos">Ver recebimentos dos clientes →</a></p></div></div>`+
+      <div class="card"><h3>Contas a receber em aberto</h3><div class="tbl"><table><tr><th>De quem</th><th style="text-align:right">Títulos</th><th style="text-align:right">Saldo</th><th style="text-align:right">Vencido</th></tr>${Object.keys(NR).filter(k=>rc[k]).map(k=>`<tr><td>${NR[k]}</td><td style="text-align:right">${rc[k].qtd}</td><td style="text-align:right">${brl0(rc[k].saldo)}</td><td style="text-align:right">${brl0(rc[k].vencido)}</td></tr>`).join('')||'<tr><td colspan="4" class="mut">Contas a receber não importadas.</td></tr>'}</table></div><p class="mut"><a href="#/recebimentos">Ver recebimentos dos clientes →</a></p></div></div>
+    <div class="linha" style="margin:4px 0 12px"><button class="sec" id="finExpVenc">Baixar títulos vencidos (planilha)</button><span class="mut">Todos os vencidos a pagar e a receber${lojaSufixo()}, do mais antigo para o mais novo, para conferir um a um no Santri.</span></div>`+
     abasJ('fin',[['dre','DRE'],['pagar','Agenda de pagamentos'],['antecipados','Antecipados à fábrica'],['creditos','Créditos e sem plano']],telaFinanceiroJ)+corpo;
+  $('#finExpVenc').onclick=exportarVencidosJ;
   if($('#finAnoM')){ $('#finAnoM').onclick=()=>{J.ano=ano-1;telaFinanceiroJ();}; $('#finAnoP').onclick=()=>{J.ano=ano+1;telaFinanceiroJ();}; $('#finDet').onchange=e=>{J.aba.finDet=e.target.checked;telaFinanceiroJ();}; }
 }
 

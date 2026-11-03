@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 57d** (a próxima é a 58 — avise antes de criar).
+**Última migration: 58** (a próxima é a 59 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude Opus) | Tela Financeiro: botão "Baixar títulos vencidos (planilha)" com todos os vencidos a pagar e a receber (RPC `exportar_titulos_vencidos`), com colunas em branco para o financeiro anotar a análise e o ajuste no Santri. Objetivo: limpar no Santri os lançamentos antigos errados | 58 | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Desempenho depois da importação do histórico completo do Santri. `titulos_aberto` ignora títulos Baixados (eram 60 mil dos 66 mil e saíam como pago), `caixa_fluxo` lê só 6 meses de títulos a pagar, painel da Direção e Financeiro calculam a última importação do DRE e dos títulos uma vez só (antes era linha a linha), e a tela de Compras liga venda → compra por junção em vez de varredura. Resultados conferidos iguais. Caixa (projeção das 2 lojas) 7,5 s → 1,3 s · DRE+títulos do painel ~3,5 s → 0,14 s · ligação de Compras 1,7 s → 0,3 s | 57, 57b, 57c, 57d | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Barra lateral em grupos que abrem para baixo: Direção solta no topo, depois Vendas, Operação, Financeiro e Configuração. O grupo da tela aberta já vem aberto e cada pessoa guarda quais deixou abertos. Celular sem mudança | — | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Revisão do plano 3 da F2: parcela de renegociação só liga a título do Santri de valor parecido (compra nova do mesmo fornecedor fazia a parcela sumir do caixa) · contrato de renegociação desativado não volta (contaria em dobro) · editar contrato exige permissão na loja atual · renegociar título da outra loja cria contrato entre lojas | 56 | ver git log |
