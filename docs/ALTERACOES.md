@@ -2,10 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 48** (a próxima é a 49 — avise antes de criar).
+**Última migration: 49** (com 49b — a próxima é a 50 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
+| 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 3: vendas futuras com recebimento pelo perfil, custo das vendas, RT dos arquitetos e impostos das vendas, em `caixa_fluxo` (ainda não aparecem na tela) | 49, 49b | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 2: custo fixo recorrente estimado (média de 6 meses menos o lançado) em `caixa_fluxo` | 48 | ver git log |
 | 03/11/2026 | Bruno (Claude) | Caixa plano 2, Task 1: perfil das vendas (média, percentuais, ritmo de recebimento) e dias de pagar a RT e os impostos por loja | 47 | ver git log |
 | 02/11/2026 | Bruno (Claude) | Revisão do plano 1 da F2: baixa parcial não marca mais o título como pago (só baixas depois da foto contam e o parcial é descontado) · saldo do caixa só por conta bancária (Compras leva para Caixa › Saldos, fim do saldo em dobro) · funções internas do caixa fechadas para anon | 46 | ver git log |
