@@ -856,8 +856,7 @@ function lerRelatorioNotasSaida(rows){
   const f=filtros.map(nrm).join(' | ');
   const im=f.search(/tipo\(?s?\)? de movimento/);
   if(im>=0&&!/entrega|pedido/.test(f.slice(im))) avisos.push('O filtro de <b>Tipo de movimento</b> não incluiu <b>Entregas</b> nem <b>Pedido</b>: as remessas ficam de fora. Use todos os tipos.');
-  const isit=f.search(/situac/);
-  if(isit>=0&&/cancelad|denegad|inutiliz/.test(f.slice(isit))) erros.push('O filtro de <b>Situação</b> incluiu notas <b>canceladas, denegadas ou inutilizadas</b>. O relatório não traz a situação de cada nota, então elas entrariam como remessas válidas. Exporte de novo só com as emitidas normalmente (DPEC/EPEC/contingência podem ficar), sem canceladas.');
+  if(/cancelad|denegad|inutiliz/.test(f)) erros.push('O filtro do relatório incluiu notas <b>canceladas, denegadas ou inutilizadas</b>. O relatório não traz a situação de cada nota, então elas entrariam como remessas válidas. Exporte de novo só com as emitidas normalmente (DPEC/EPEC/contingência podem ficar), sem canceladas.');
   if(semLoja) avisos.push(`${semLoja} nota(s) sem loja reconhecida (PVA/RV) foram ignoradas.`);
   const u=L_.unicos(regs,x=>x.loja_id+'|'+x.cod_nota,avisos,'nota');
   const datas=u.map(x=>x.emissao).filter(Boolean).sort();
