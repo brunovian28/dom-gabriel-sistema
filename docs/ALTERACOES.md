@@ -2,11 +2,11 @@
 
 Uma linha por alteração, **a mais nova no topo**. Quem entra lê daqui para baixo até a última linha que já conhece.
 
-**Última migration: 63** (a próxima é a 64 — avise antes de criar).
+**Última migration: 63b** (a próxima é a 64 — avise antes de criar).
 
 | Data | Quem | O que mudou | Migration | Commit |
 | --- | --- | --- | --- | --- |
-| 03/11/2026 | Bruno (Claude Sonnet) | Notas fiscais de saída no banco: tabelas `notas_saida` (+ eventos e staging) e RPCs de prévia e aplicar da Importadora (relatório 12 "Notas fiscais emitidas", setor logística). Chave loja + código da nota, período de emissão por loja, nota que sumiu vira inativa, remessa liga a `entregas_santri`. Leitor e tela vêm nas próximas tasks | 63 | ver git log |
+| 03/11/2026 | Bruno (Claude Sonnet) | Notas fiscais de saída no banco: tabelas `notas_saida` (+ eventos e staging) e RPCs de prévia e aplicar da Importadora (relatório 12 "Notas fiscais emitidas", setor logística). Chave loja + código da nota, período de emissão por loja, nota que sumiu vira inativa, remessa liga a `entregas_santri`. Revisão (63b): as RPCs conferem de quem é a importação e o tipo, aplicar duas vezes não regrava, período deduplicado igual à prévia, anon sem acesso às tabelas. Leitor e tela vêm nas próximas tasks | 63, 63b | ver git log |
 | 03/11/2026 | Bruno (Claude Opus) | Pedidos: "entregue presumido" (mais de 60 dias, nada no Santri) não exige mais a mercadoria completa. "Falta comprar" cai de 168 para 64 e os pedidos em aberto de 399 para 276. Pílula "Não lançado" sai das linhas (o botão Lançar já mostra), fica só o filtro no topo. Testes da tela e do Lançar passando | 62 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Pedidos, revisão final: `tela_pedidos` devolve o `capa_id` da capa (botão Capa abria a capa errada), `salvar_datas_pedido` espelha as datas não nulas em `pedidos` (null não apaga a da capa), a capa envia só o campo que mudou, previsão igual à do Santri não vira data do sistema, corrida no Lançar e capa da loja errada corrigidas, botão Datas só para quem pode salvar | 61 | ver git log |
 | 03/11/2026 | Bruno (Claude Sonnet) | Lançar pedido: previsão de entrega, data que o cliente precisa e formas de pagamento do Santri já vêm preenchidas (`dados_lancar_pedido`); lançar e editar datas na capa do pedido também gravam em `pedido_datas` (`salvar_datas_pedido`), com aviso se a sincronização falhar | — | ver git log |
