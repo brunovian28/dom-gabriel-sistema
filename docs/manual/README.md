@@ -13,7 +13,7 @@ A ordem segue o menu lateral do sistema.
 | Operação | Pedidos | [pedidos.md](pedidos.md) | pronto (rascunho) |
 | Operação | Compras | [compras.md](compras.md) | pronto (rascunho) |
 | Operação | Chegada | — | a escrever |
-| Operação | Entregas | — | a escrever |
+| Operação | Entregas | [entregas.md](entregas.md) | pronto (rascunho) |
 | Operação | Estoque | — | a escrever |
 | Vendas | Capas, Nova capa, Painel, Orçamentos, Agenda, Profissionais | — | a escrever |
 | Financeiro | Recebimentos, Financeiro, Caixa, Plano de contas, Conferência de ST | — | a escrever |

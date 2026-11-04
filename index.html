@@ -119,7 +119,7 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const brl = v => (Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const dBR = d => d ? new Date(d + (d.length===10?'T12:00:00':'')).toLocaleDateString('pt-BR') : '';
-const hoje = () => new Date().toISOString().slice(0,10);
+const hoje = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }; // data local (Cuiabá), não UTC
 function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1600);}
 function erro(e){ console.error(e); toast('Erro: '+(e.message||e)); }
 window.addEventListener('unhandledrejection',e=>erro(e.reason||e));
@@ -1569,7 +1569,7 @@ async function telaCompras(usarCache){
   const lj=LOJA_VER||(veDuasLojas()?0:EU.loja_id);
   if(!usarCache||!CMP.cache||CMP.cache.lj!==lj){
     $('#conteudo').innerHTML=cabJ('Compras')+'<p class="mut">Carregando…</p>';
-    const h0=hojeLocalJ(), doze=new Date(new Date(h0).getFullYear(),new Date(h0).getMonth()-11,1).toISOString().slice(0,10);
+    const h0=hojeLocalJ(), doze=new Date(new Date(h0+'T12:00:00').getFullYear(),new Date(h0+'T12:00:00').getMonth()-11,1).toISOString().slice(0,10);
     try{
       const [r,abertas,ano,ped]=await Promise.all([
         rpcJ('tela_compras',{p_loja:lj||0}),

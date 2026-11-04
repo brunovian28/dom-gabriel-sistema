@@ -78,4 +78,4 @@ Topo com os números que norteiam o setor; abaixo, o trabalho na ordem. Ordem su
 - Vendedores começarem a usar capas e pedidos; metas do mês; "Nome no Santri" de cada vendedor.
 - Pedidos à Santri: nº da venda no relatório de compras, data do orçamento no relatório de vendas, previsão de entrega por item.
 - Exportar contas a pagar/receber por vencimento (hoje por emissão).
-- `hoje()` do front usa UTC; trocar pela data local em todas as telas.
+- ~~`hoje()` do front usa UTC~~ corrigido em 04/11/2026 (data local).
